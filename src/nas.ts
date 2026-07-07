@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 
 import { computeLocalWaiting } from "./localSessions";
+import { readInactiveMs } from "./waitingConfig";
 
 /** One machine's contribution, written to `<nas>/reports/<machine>.json`. */
 export type MachineReport = {
@@ -35,7 +36,7 @@ export function writeLocalReport(nasDir: string): MachineReport {
 	const report: MachineReport = {
 		machine: machineName(),
 		updatedAt: Date.now(),
-		accounts: computeLocalWaiting(),
+		accounts: computeLocalWaiting(readInactiveMs(nasDir)),
 	};
 	const target = join(dir, `${report.machine}.json`);
 	const tmp = `${target}.${process.pid}.tmp`;

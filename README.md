@@ -29,6 +29,10 @@ The Stream Deck machine reports itself. Every *other* machine running Claude Cod
 
 For scripted/manual use: `node reporter/report.mjs --out "Y:\Claude\Streamdeck"`. Run as a **login/startup item**, not a session-0 scheduled task — mapped drives like `Y:` only exist in the interactive session (a UNC path `\\NAS\...` works from either).
 
+### "Waiting" definition & tuning
+
+A session counts as *waiting for your input* when it's **unarchived, not running, has ≥1 completed turn** (excludes headless/scheduled runs), and was **active within N minutes** (default 60) — across all accounts. `N` lives in `<nas>/waiting-config.json` (`{"inactiveMinutes": 60}`); the plugin and every reporter re-read it within ~30s, so you can retune the window by editing that one file — no rebuild, no re-running anything.
+
 > Usage %: the plugin polls the usage API every ~3 min per account with exponential backoff on rate limits — keep an eye out if you run multiple plugin instances against the same account.
 
 ## Develop

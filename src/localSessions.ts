@@ -69,16 +69,16 @@ type DesktopSession = {
 	completedTurns?: number;
 };
 
-/** A session only counts as "waiting" if it was active within this window (i.e. currently awaiting you, not abandoned). */
-const RECENT_MS = 60 * 60 * 1000;
+/** Default "inactive after" window when no shared config is present. */
+const DEFAULT_RECENT_MS = 60 * 60 * 1000;
 
 /**
  * Returns a map of accountUuid → count of sessions waiting for your reply on this
  * machine: unarchived, not currently running, with at least one completed turn
  * (excludes headless/scheduled runs like recurring tasks), and active within
- * {@link RECENT_MS}. Counted across all accounts, not just the signed-in one.
+ * {@link recentMs}. Counted across all accounts, not just the signed-in one.
  */
-export function computeLocalWaiting(): Record<string, number> {
+export function computeLocalWaiting(recentMs: number = DEFAULT_RECENT_MS): Record<string, number> {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts: Record<string, number> = {};
 	if (!existsSync(root)) {
@@ -108,7 +108,7 @@ export function computeLocalWaiting(): Record<string, number> {
 				}
 				const running = !!s.cliSessionId && live.has(s.cliSessionId);
 				const real = (s.completedTurns ?? 0) > 0;
-				const recent = now - (s.lastActivityAt ?? 0) <= RECENT_MS;
+				const recent = now - (s.lastActivityAt ?? 0) <= recentMs;
 				if (!running && real && recent) {
 					waiting++;
 				}

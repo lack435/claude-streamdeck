@@ -56,17 +56,24 @@ function liveSessionIds() {
 	return live;
 }
 
-const RECENT_MS = 60 * 60 * 1000; // only count sessions active within this window (currently awaiting you)
+// "Inactive after N minutes" threshold, shared via <nasDir>/waiting-config.json.
+// Re-read each cycle so edits apply without re-running anything. Default 60 min.
+function readRecentMs() {
+	const c = readJson(join(nasDir, "waiting-config.json"));
+	const m = Number(c?.inactiveMinutes);
+	return Number.isFinite(m) && m > 0 ? m * 60000 : 60 * 60000;
+}
 
 // accountUuid -> count of sessions waiting for your reply on this machine:
 // unarchived, not running, with a completed turn (excludes headless/scheduled runs),
-// and active within RECENT_MS. Counted across all accounts, not just the signed-in one.
+// and active within the window. Counted across all accounts, not just the signed-in one.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
 	const live = liveSessionIds();
 	const now = Date.now();
+	const recentMs = readRecentMs();
 	for (const accountId of readdirSync(root)) {
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
@@ -80,7 +87,7 @@ function computeLocalWaiting() {
 				if (!s || s.isArchived) continue;
 				const running = s.cliSessionId && live.has(s.cliSessionId);
 				const real = (s.completedTurns ?? 0) > 0;
-				const recent = now - (s.lastActivityAt ?? 0) <= RECENT_MS;
+				const recent = now - (s.lastActivityAt ?? 0) <= recentMs;
 				if (!running && real && recent) waiting++;
 			}
 		}

@@ -91,6 +91,7 @@ function computeLocalWaiting() {
 				if (!f.startsWith("local_") || !f.endsWith(".json")) continue;
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived) continue;
+				if (s.scheduledTaskId != null) continue; // scheduled task / routine — never counted
 				const age = now - (s.lastActivityAt ?? 0);
 				const running = s.cliSessionId && live.has(s.cliSessionId) && age < graceMs;
 				const real = (s.completedTurns ?? 0) > 0;

@@ -65,8 +65,9 @@ type DesktopSession = {
 	isArchived?: boolean;
 	cliSessionId?: string;
 	lastActivityAt?: number;
-	/** 0 means a headless/scheduled run that never held a real conversation. */
 	completedTurns?: number;
+	/** Present when the session was spawned by a scheduled task / routine — never counted. */
+	scheduledTaskId?: string;
 };
 
 /** Defaults when no shared config is present. */
@@ -110,6 +111,9 @@ export function computeLocalWaiting(recentMs: number = DEFAULT_RECENT_MS, graceM
 				const s = readJson<DesktopSession>(join(orgDir, file));
 				if (!s || s.isArchived) {
 					continue;
+				}
+				if (s.scheduledTaskId != null) {
+					continue; // scheduled task / routine — not something awaiting your reply
 				}
 				const age = now - (s.lastActivityAt ?? 0);
 				const running = !!s.cliSessionId && live.has(s.cliSessionId) && age < graceMs;

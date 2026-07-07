@@ -109,7 +109,7 @@ export function renderMulti(label: string, rows: MultiRow[]): string {
 			const tag = escapeXml(row.tag.slice(0, 8));
 			const line =
 				`<text x="10" y="${cy}" dominant-baseline="central" font-family="sans-serif" font-size="17" fill="#aeb6c0">${tag}</text>` +
-				`<text x="136" y="${cy}" text-anchor="end" dominant-baseline="central" font-family="sans-serif" font-size="${valueSize}" font-weight="700" fill="${row.color}">${escapeXml(row.value)}</text>`;
+				`<text x="${CX}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${valueSize}" font-weight="700" fill="${row.color}">${escapeXml(row.value)}</text>`;
 			const bar = !hasBar
 				? ""
 				: `<rect x="10" y="${rt + rowH - 13}" width="124" height="6" rx="3" fill="#21262d"/>` +

@@ -69,8 +69,8 @@ type DesktopSession = {
 	completedTurns?: number;
 };
 
-/** A session only counts as "waiting" if it was active within this window (excludes abandoned ones). */
-const RECENT_MS = 10 * 24 * 60 * 60 * 1000;
+/** A session only counts as "waiting" if it was active within this window (i.e. currently awaiting you, not abandoned). */
+const RECENT_MS = 60 * 60 * 1000;
 
 /**
  * Returns a map of accountUuid → count of sessions waiting for your reply on this

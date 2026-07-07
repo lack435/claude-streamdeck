@@ -56,7 +56,7 @@ function liveSessionIds() {
 	return live;
 }
 
-const RECENT_MS = 10 * 24 * 60 * 60 * 1000; // only count sessions active within this window
+const RECENT_MS = 60 * 60 * 1000; // only count sessions active within this window (currently awaiting you)
 
 // accountUuid -> count of sessions waiting for your reply on this machine:
 // unarchived, not running, with a completed turn (excludes headless/scheduled runs),

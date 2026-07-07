@@ -44,46 +44,44 @@ function readJson(path) {
 	try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-// A session's transcript (~/.claude/projects/<proj>/<cliSessionId>.jsonl) is written on
-// every message/tool step, so its mtime tracks "actively working" far more tightly than
-// the session file's lastActivityAt (which lags a whole turn). Returns ms since last
-// write, or Infinity if not found.
-function transcriptAgeMs(cliSessionId, now) {
-	if (!cliSessionId) return Infinity;
-	const proj = join(homedir(), ".claude", "projects");
-	if (!existsSync(proj)) return Infinity;
-	for (const d of readdirSync(proj)) {
-		const f = join(proj, d, `${cliSessionId}.jsonl`);
-		if (existsSync(f)) {
-			try { return now - statSync(f).mtimeMs; } catch { return Infinity; }
-		}
-	}
-	return Infinity;
+function pidAlive(pid) {
+	try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
 }
 
-// Waiting window shared via <nasDir>/waiting-config.json, re-read each cycle so edits
-// apply without re-running anything. Defaults: inactive 60 min, grace 120 s.
-function readWindow() {
+// CLI sessionIds that currently have a live process. A session with a live process is
+// actively working/attached (dim); when the agent finishes the process exits, so no
+// process = done/idle. This is stable, unlike transcript mtime which has gaps during
+// long thinking / tool calls and falsely read active agents as "done".
+function liveSessionIds() {
+	const dir = join(homedir(), ".claude", "sessions");
+	const live = new Set();
+	if (!existsSync(dir)) return live;
+	for (const f of readdirSync(dir)) {
+		if (!f.endsWith(".json")) continue;
+		const d = readJson(join(dir, f));
+		if (d?.pid && d.sessionId && pidAlive(d.pid)) live.add(d.sessionId);
+	}
+	return live;
+}
+
+// "Inactive after N minutes" window, shared via <nasDir>/waiting-config.json, re-read
+// each cycle so edits apply without re-running anything. Default 60 min.
+function readRecentMs() {
 	const c = readJson(join(nasRoot(nasDir), "waiting-config.json")) || {};
 	const m = Number(c.inactiveMinutes);
-	const g = Number(c.activeGraceSeconds);
-	return {
-		recentMs: (Number.isFinite(m) && m > 0 ? m : 60) * 60000,
-		graceMs: (Number.isFinite(g) && g >= 0 ? g : 120) * 1000,
-	};
+	return (Number.isFinite(m) && m > 0 ? m : 60) * 60000;
 }
 
 // accountUuid -> count of sessions waiting for your reply on this machine: unarchived,
-// not a scheduled routine, with a completed turn, and whose TRANSCRIPT has been quiet
-// between grace and the inactive window (settled = done, but recent). Transcript mtime
-// (not the session file, and not a live process — CC keeps that alive while selected)
-// is what distinguishes "actively working" from "done waiting". All accounts.
+// not a scheduled routine, with a completed turn, NO live process (done, not actively
+// working), and last active within the window (recent, not abandoned). All accounts.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
 	const now = Date.now();
-	const { recentMs, graceMs } = readWindow();
+	const live = liveSessionIds();
+	const recentMs = readRecentMs();
 	for (const accountId of readdirSync(root)) {
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
@@ -96,10 +94,8 @@ function computeLocalWaiting() {
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived || s.scheduledTaskId != null) continue;
 				if ((s.completedTurns ?? 0) <= 0) continue;
-				// Prefer transcript mtime; fall back to session-file activity if absent.
-				let age = transcriptAgeMs(s.cliSessionId, now);
-				if (!Number.isFinite(age)) age = now - (s.lastActivityAt ?? 0);
-				if (age >= graceMs && age <= recentMs) waiting++;
+				if (s.cliSessionId && live.has(s.cliSessionId)) continue; // actively working
+				if (now - (s.lastActivityAt ?? 0) <= recentMs) waiting++;
 			}
 		}
 		counts[accountId] = waiting;

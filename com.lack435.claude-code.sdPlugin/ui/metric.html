@@ -150,6 +150,11 @@
 		function populateAccounts(items) {
 			const current = settings.accountId || "";
 			accountEl.innerHTML = '<option value="">— none —</option>';
+			if (items.length > 1) {
+				const all = document.createElement("option");
+				all.value = "__all__"; all.textContent = "★ All accounts";
+				accountEl.appendChild(all);
+			}
 			for (const it of items) {
 				const opt = document.createElement("option");
 				opt.value = it.value; opt.textContent = it.label;

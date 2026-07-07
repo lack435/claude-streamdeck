@@ -21,8 +21,11 @@ import {
 } from "../accounts";
 import { agentPoller } from "../agents";
 import { beginLogin, completeLogin } from "../login";
-import { renderCount, renderMessage, renderPercent } from "../render";
+import { colorForPct, renderCount, renderMessage, renderMulti, renderPercent, type MultiRow } from "../render";
 import { poller } from "../usage";
+
+/** Sentinel accountId meaning "stack every logged-in account on one tile". */
+export const ALL_ACCOUNTS = "__all__";
 
 export type MetricKind = "session" | "weekly" | "agents";
 
@@ -156,6 +159,11 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			return;
 		}
 
+		if (accountId === ALL_ACCOUNTS) {
+			await MetricAction.renderCombined(act, metric, label);
+			return;
+		}
+
 		if (!accountId) {
 			await act.setImage(renderMessage(label, "?", "no account"));
 			return;
@@ -182,5 +190,29 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 		const pct = metric === "weekly" ? snap.weeklyPct : snap.sessionPct;
 		const severity = metric === "weekly" ? snap.weeklySeverity : snap.sessionSeverity;
 		await act.setImage(renderPercent(label, pct, sub, severity));
+	}
+
+	/** Render one row per logged-in account for the given metric. */
+	private static async renderCombined(act: KeyAction<MetricSettings>, metric: MetricKind, label: string): Promise<void> {
+		const accounts = getCachedAccounts();
+		if (accounts.length === 0) {
+			await act.setImage(renderMessage(label, "?", "no accts"));
+			return;
+		}
+		const rows: MultiRow[] = accounts.map((acc) => {
+			const tag = accountSub(acc);
+			if (metric === "agents") {
+				const count = agentPoller.getCount(acc.uuid);
+				return { tag, value: count === undefined ? "…" : String(count), color: (count ?? 0) > 0 ? "#58a6ff" : "#484f58" };
+			}
+			const snap = poller.getSnapshot(acc.uuid);
+			if (!snap) {
+				return { tag, value: poller.getError(acc.uuid) ? "!" : "…", color: "#484f58" };
+			}
+			const pct = metric === "weekly" ? snap.weeklyPct : snap.sessionPct;
+			const severity = metric === "weekly" ? snap.weeklySeverity : snap.sessionSeverity;
+			return { tag, value: `${pct}%`, pct, color: colorForPct(pct, severity) };
+		});
+		await act.setImage(renderMulti(label, rows));
 	}
 }

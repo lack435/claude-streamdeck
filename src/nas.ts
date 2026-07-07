@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 
 import { computeLocalWaiting } from "./localSessions";
-import { readInactiveMs } from "./waitingConfig";
+import { readWaitingWindow } from "./waitingConfig";
 
 /** One machine's contribution, written to `<nas>/reports/<machine>.json`. */
 export type MachineReport = {
@@ -33,10 +33,11 @@ function reportsDir(nasDir: string): string {
 export function writeLocalReport(nasDir: string): MachineReport {
 	const dir = reportsDir(nasDir);
 	mkdirSync(dir, { recursive: true });
+	const { recentMs, graceMs } = readWaitingWindow(nasDir);
 	const report: MachineReport = {
 		machine: machineName(),
 		updatedAt: Date.now(),
-		accounts: computeLocalWaiting(readInactiveMs(nasDir)),
+		accounts: computeLocalWaiting(recentMs, graceMs),
 	};
 	const target = join(dir, `${report.machine}.json`);
 	const tmp = `${target}.${process.pid}.tmp`;

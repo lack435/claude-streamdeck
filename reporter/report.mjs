@@ -56,24 +56,30 @@ function liveSessionIds() {
 	return live;
 }
 
-// "Inactive after N minutes" threshold, shared via <nasDir>/waiting-config.json.
-// Re-read each cycle so edits apply without re-running anything. Default 60 min.
-function readRecentMs() {
-	const c = readJson(join(nasDir, "waiting-config.json"));
-	const m = Number(c?.inactiveMinutes);
-	return Number.isFinite(m) && m > 0 ? m * 60000 : 60 * 60000;
+// Tuning window shared via <nasDir>/waiting-config.json, re-read each cycle so edits
+// apply without re-running anything. Defaults: inactiveMinutes 60, activeGraceSeconds 180.
+function readWindow() {
+	const c = readJson(join(nasDir, "waiting-config.json")) || {};
+	const m = Number(c.inactiveMinutes);
+	const g = Number(c.activeGraceSeconds);
+	return {
+		recentMs: (Number.isFinite(m) && m > 0 ? m : 60) * 60000,
+		graceMs: (Number.isFinite(g) && g >= 0 ? g : 180) * 1000,
+	};
 }
 
 // accountUuid -> count of sessions waiting for your reply on this machine:
-// unarchived, not running, with a completed turn (excludes headless/scheduled runs),
-// and active within the window. Counted across all accounts, not just the signed-in one.
+// unarchived, not actively-running, with a completed turn (excludes headless/scheduled
+// runs), and active within the window. A live process with stale activity (> grace) is
+// treated as idle/waiting — works around Claude Code's stuck-"Running" state.
+// Counted across all accounts, not just the signed-in one.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
 	const live = liveSessionIds();
 	const now = Date.now();
-	const recentMs = readRecentMs();
+	const { recentMs, graceMs } = readWindow();
 	for (const accountId of readdirSync(root)) {
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
@@ -85,9 +91,10 @@ function computeLocalWaiting() {
 				if (!f.startsWith("local_") || !f.endsWith(".json")) continue;
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived) continue;
-				const running = s.cliSessionId && live.has(s.cliSessionId);
+				const age = now - (s.lastActivityAt ?? 0);
+				const running = s.cliSessionId && live.has(s.cliSessionId) && age < graceMs;
 				const real = (s.completedTurns ?? 0) > 0;
-				const recent = now - (s.lastActivityAt ?? 0) <= recentMs;
+				const recent = age <= recentMs;
 				if (!running && real && recent) waiting++;
 			}
 		}

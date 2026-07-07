@@ -65,6 +65,7 @@ type DesktopSession = {
 	isArchived?: boolean;
 	cliSessionId?: string;
 	lastActivityAt?: number;
+	/** 0/absent means the session was never opened in the app — i.e. a headless/scheduled run. */
 	lastFocusedAt?: number;
 };
 
@@ -112,7 +113,10 @@ export function computeLocalWaiting(): Record<string, number> {
 					continue;
 				}
 				const running = !!s.cliSessionId && live.has(s.cliSessionId);
-				if (!running) {
+				// Only count sessions you've actually opened and are awaiting your reply:
+				// unarchived, not running, and focused at least once (excludes headless/scheduled runs).
+				const opened = (s.lastFocusedAt ?? 0) > 0;
+				if (!running && opened) {
 					waiting++;
 				}
 			}

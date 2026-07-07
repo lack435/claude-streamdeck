@@ -82,7 +82,10 @@ function computeLocalWaiting() {
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived) continue;
 				const running = s.cliSessionId && live.has(s.cliSessionId);
-				if (!running) waiting++;
+				// Only sessions you've opened and are awaiting your reply: unarchived, not
+				// running, focused at least once (excludes headless/scheduled runs).
+				const opened = (s.lastFocusedAt ?? 0) > 0;
+				if (!running && opened) waiting++;
 			}
 		}
 		counts[accountId] = waiting;

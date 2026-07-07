@@ -65,21 +65,19 @@ type DesktopSession = {
 	isArchived?: boolean;
 	cliSessionId?: string;
 	lastActivityAt?: number;
-	/** 0/absent means the session was never opened in the app — i.e. a headless/scheduled run. */
-	lastFocusedAt?: number;
+	/** 0 means a headless/scheduled run that never held a real conversation. */
+	completedTurns?: number;
 };
 
-/**
- * The account currently signed into the desktop app on this machine. Sessions
- * under other accounts are stale leftovers from a previous login (you can't act
- * on them without switching accounts), so we don't count them.
- */
-function activeAccountId(): string | undefined {
-	const cfg = readJson<{ lastKnownAccountUuid?: string }>(join(claudeAppDataDir(), "config.json"));
-	return cfg?.lastKnownAccountUuid;
-}
+/** A session only counts as "waiting" if it was active within this window (excludes abandoned ones). */
+const RECENT_MS = 10 * 24 * 60 * 60 * 1000;
 
-/** Returns a map of accountUuid → count of sessions waiting for input on this machine. */
+/**
+ * Returns a map of accountUuid → count of sessions waiting for your reply on this
+ * machine: unarchived, not currently running, with at least one completed turn
+ * (excludes headless/scheduled runs like recurring tasks), and active within
+ * {@link RECENT_MS}. Counted across all accounts, not just the signed-in one.
+ */
 export function computeLocalWaiting(): Record<string, number> {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts: Record<string, number> = {};
@@ -87,13 +85,9 @@ export function computeLocalWaiting(): Record<string, number> {
 		return counts;
 	}
 	const live = liveSessionIds();
-	const active = activeAccountId();
+	const now = Date.now();
 
 	for (const accountId of readdirSync(root)) {
-		// Only the currently-signed-in account is actionable; skip stale accounts.
-		if (active && accountId !== active) {
-			continue;
-		}
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) {
 			continue;
@@ -113,10 +107,9 @@ export function computeLocalWaiting(): Record<string, number> {
 					continue;
 				}
 				const running = !!s.cliSessionId && live.has(s.cliSessionId);
-				// Only count sessions you've actually opened and are awaiting your reply:
-				// unarchived, not running, and focused at least once (excludes headless/scheduled runs).
-				const opened = (s.lastFocusedAt ?? 0) > 0;
-				if (!running && opened) {
+				const real = (s.completedTurns ?? 0) > 0;
+				const recent = now - (s.lastActivityAt ?? 0) <= RECENT_MS;
+				if (!running && real && recent) {
 					waiting++;
 				}
 			}

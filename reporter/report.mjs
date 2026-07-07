@@ -56,21 +56,18 @@ function liveSessionIds() {
 	return live;
 }
 
-// Account currently signed into the desktop app; sessions under other accounts
-// are stale leftovers from a previous login and are not counted.
-function activeAccountId() {
-	return readJson(join(claudeAppDataDir(), "config.json"))?.lastKnownAccountUuid;
-}
+const RECENT_MS = 10 * 24 * 60 * 60 * 1000; // only count sessions active within this window
 
-// accountUuid -> count of unarchived, not-running sessions on this machine.
+// accountUuid -> count of sessions waiting for your reply on this machine:
+// unarchived, not running, with a completed turn (excludes headless/scheduled runs),
+// and active within RECENT_MS. Counted across all accounts, not just the signed-in one.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
 	const live = liveSessionIds();
-	const active = activeAccountId();
+	const now = Date.now();
 	for (const accountId of readdirSync(root)) {
-		if (active && accountId !== active) continue; // only the signed-in account
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
 		let waiting = 0;
@@ -82,10 +79,9 @@ function computeLocalWaiting() {
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived) continue;
 				const running = s.cliSessionId && live.has(s.cliSessionId);
-				// Only sessions you've opened and are awaiting your reply: unarchived, not
-				// running, focused at least once (excludes headless/scheduled runs).
-				const opened = (s.lastFocusedAt ?? 0) > 0;
-				if (!running && opened) waiting++;
+				const real = (s.completedTurns ?? 0) > 0;
+				const recent = now - (s.lastActivityAt ?? 0) <= RECENT_MS;
+				if (!running && real && recent) waiting++;
 			}
 		}
 		counts[accountId] = waiting;

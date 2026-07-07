@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+
+<head lang="en">
+	<title>Claude Metric</title>
+	<meta charset="utf-8" />
+	<style>
+		:root { color-scheme: dark; }
+		body { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px; color: #d8d8d8; background: #2d2d2d; margin: 0; padding: 12px; }
+		.row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+		.row label { flex: 0 0 92px; text-align: right; color: #969696; }
+		.row select, .row input { flex: 1; background: #3d3d3d; color: #fff; border: 1px solid #4d4d4d; border-radius: 4px; padding: 5px 6px; }
+		button { background: #4a90d9; color: #fff; border: none; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+		button.secondary { background: #444; }
+		button:disabled { opacity: 0.5; cursor: default; }
+		hr { border: none; border-top: 1px solid #444; margin: 14px 0; }
+		.section-title { color: #7d7d7d; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+		.status { font-size: 12px; margin-top: 6px; min-height: 16px; }
+		.status.err { color: #f08080; }
+		.status.ok { color: #7ec87e; }
+		.hidden { display: none; }
+		.hint { color: #808080; font-size: 11px; margin: 4px 0 0 100px; }
+		a { color: #6fb3f0; word-break: break-all; }
+	</style>
+</head>
+
+<body>
+	<div class="row">
+		<label for="metric">Metric</label>
+		<select id="metric">
+			<option value="">— choose —</option>
+			<option value="session">Session usage (5h)</option>
+			<option value="weekly">Weekly usage</option>
+			<option value="agents">Agents waiting</option>
+		</select>
+	</div>
+
+	<div class="row" id="accountRow">
+		<label for="account">Account</label>
+		<select id="account">
+			<option value="">— none —</option>
+		</select>
+	</div>
+
+	<div class="row">
+		<label for="label">Label</label>
+		<input id="label" type="text" placeholder="(optional, e.g. work)" maxlength="12" />
+	</div>
+
+	<hr />
+	<div class="section-title">Accounts</div>
+
+	<div class="row">
+		<label>&nbsp;</label>
+		<button id="addBtn" type="button">Add / re-login account</button>
+	</div>
+
+	<div id="pasteArea" class="hidden">
+		<p class="hint">A browser window opened. Approve, then paste the code shown (looks like <code>code#state</code>).</p>
+		<div class="row">
+			<label for="code">Code</label>
+			<input id="code" type="text" placeholder="paste code#state here" />
+		</div>
+		<div class="row">
+			<label>&nbsp;</label>
+			<button id="finishBtn" type="button">Finish login</button>
+			<button id="cancelBtn" type="button" class="secondary">Cancel</button>
+		</div>
+		<p class="hint" id="urlFallback"></p>
+	</div>
+
+	<div class="row">
+		<label>&nbsp;</label>
+		<button id="removeBtn" type="button" class="secondary">Remove selected account</button>
+	</div>
+
+	<div class="status" id="status"></div>
+
+	<script>
+		let ws, uuid, actionUUID, settings = {};
+
+		const $ = (id) => document.getElementById(id);
+		const metricEl = $("metric"), accountEl = $("account"), labelEl = $("label"), statusEl = $("status");
+
+		function setStatus(text, cls) { statusEl.textContent = text || ""; statusEl.className = "status" + (cls ? " " + cls : ""); }
+
+		function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+		function sendToPlugin(payload) { send({ event: "sendToPlugin", context: uuid, action: actionUUID, payload }); }
+		function saveSettings() { send({ event: "setSettings", context: uuid, payload: settings }); }
+		function requestAccounts() { sendToPlugin({ event: "getAccounts" }); }
+
+		// eslint-disable-next-line no-unused-vars
+		function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
+			uuid = inUUID;
+			const actionInfo = JSON.parse(inActionInfo);
+			actionUUID = actionInfo.action;
+			settings = actionInfo.payload.settings || {};
+			ws = new WebSocket("ws://127.0.0.1:" + inPort);
+			ws.onopen = () => {
+				send({ event: inRegisterEvent, uuid: inUUID });
+				reflect();
+				requestAccounts();
+			};
+			ws.onmessage = (e) => {
+				const msg = JSON.parse(e.data);
+				if (msg.event === "sendToPropertyInspector") onPlugin(msg.payload || {});
+				else if (msg.event === "didReceiveSettings") { settings = (msg.payload && msg.payload.settings) || {}; reflect(); }
+			};
+		}
+
+		function onPlugin(payload) {
+			switch (payload.event) {
+				case "getAccounts":
+					populateAccounts(payload.items || []);
+					break;
+				case "loginStarted":
+					$("pasteArea").classList.remove("hidden");
+					$("code").value = "";
+					$("code").focus();
+					setStatus("Browser opened — approve, then paste the code.", "");
+					$("urlFallback").innerHTML = payload.url ? 'Didn’t open? <a href="' + payload.url + '" target="_blank" rel="noreferrer">Open login page</a>' : "";
+					$("finishBtn").disabled = false;
+					break;
+				case "loginResult":
+					$("finishBtn").disabled = false;
+					if (payload.ok) {
+						$("pasteArea").classList.add("hidden");
+						setStatus("Added " + payload.label, "ok");
+						if (payload.uuid) { settings.accountId = payload.uuid; saveSettings(); }
+					} else {
+						setStatus(payload.message || "Login failed", "err");
+					}
+					break;
+			}
+		}
+
+		function populateAccounts(items) {
+			const current = settings.accountId || "";
+			accountEl.innerHTML = '<option value="">— none —</option>';
+			for (const it of items) {
+				const opt = document.createElement("option");
+				opt.value = it.value; opt.textContent = it.label;
+				accountEl.appendChild(opt);
+			}
+			accountEl.value = current;
+		}
+
+		function reflect() {
+			metricEl.value = settings.metric || "";
+			accountEl.value = settings.accountId || "";
+			labelEl.value = settings.label || "";
+		}
+
+		metricEl.addEventListener("change", () => { settings.metric = metricEl.value || undefined; saveSettings(); });
+		accountEl.addEventListener("change", () => { settings.accountId = accountEl.value || undefined; saveSettings(); });
+		labelEl.addEventListener("input", () => { settings.label = labelEl.value || undefined; saveSettings(); });
+
+		$("addBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin" }); });
+		$("finishBtn").addEventListener("click", () => {
+			const code = $("code").value.trim();
+			if (!code) { setStatus("Paste the code first.", "err"); return; }
+			$("finishBtn").disabled = true;
+			setStatus("Exchanging…", "");
+			sendToPlugin({ event: "completeLogin", code });
+		});
+		$("cancelBtn").addEventListener("click", () => { $("pasteArea").classList.add("hidden"); setStatus("", ""); });
+		$("removeBtn").addEventListener("click", () => {
+			const id = accountEl.value;
+			if (!id) { setStatus("Select an account to remove.", "err"); return; }
+			sendToPlugin({ event: "removeAccount", uuid: id });
+			settings.accountId = undefined; saveSettings();
+			setStatus("Removed.", "ok");
+		});
+	</script>
+</body>
+
+</html>

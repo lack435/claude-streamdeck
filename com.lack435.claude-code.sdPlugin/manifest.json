@@ -1,0 +1,47 @@
+{
+	"Name": "Claude Code",
+	"Version": "0.1.0.0",
+	"Author": "lack435",
+	"Actions": [
+		{
+			"Name": "Claude Metric",
+			"UUID": "com.lack435.claude-code.metric",
+			"Icon": "imgs/actions/metric/icon",
+			"Tooltip": "Shows Claude Code session usage, weekly usage, or agents waiting for input.",
+			"PropertyInspectorPath": "ui/metric.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/metric/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		}
+	],
+	"Category": "Claude Code",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"Description": "Monitor Claude Code usage limits and waiting agents across accounts and machines.",
+	"Icon": "imgs/plugin/marketplace",
+	"SDKVersion": 2,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "12"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"UUID": "com.lack435.claude-code"
+}

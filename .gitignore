@@ -1,0 +1,14 @@
+# Node.js
+node_modules/
+
+# Stream Deck files
+*.sdPlugin/bin
+*.sdPlugin/logs
+
+# Local secrets / scratch
+*.local.json
+tokens.json
+pkce.json
+
+# Manual-run logs at repo root
+/logs/

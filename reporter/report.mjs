@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Claude Stream Deck — per-machine reporter.
 //
-// Run this on every machine EXCEPT the one running the Stream Deck plugin (that
-// machine reports itself). It writes this machine's "agents waiting for input"
-// counts to the shared NAS folder so the plugin can aggregate across machines.
+// Run this on EVERY machine (including the one with the Stream Deck — recent Claude
+// Code locks down %APPDATA%\Claude so the sandboxed plugin can't read local sessions).
+// It writes this machine's "agents waiting for input" counts to the shared NAS folder
+// so the plugin can aggregate across machines.
 //
 // Usage:
 //   node report.mjs --out "\\\\NAS\\share\\claude-streamdeck" [--interval 30] [--once]
@@ -43,6 +44,23 @@ function readJson(path) {
 	try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
+// A session's transcript (~/.claude/projects/<proj>/<cliSessionId>.jsonl) is written on
+// every message/tool step, so its mtime tracks "actively working" far more tightly than
+// the session file's lastActivityAt (which lags a whole turn). Returns ms since last
+// write, or Infinity if not found.
+function transcriptAgeMs(cliSessionId, now) {
+	if (!cliSessionId) return Infinity;
+	const proj = join(homedir(), ".claude", "projects");
+	if (!existsSync(proj)) return Infinity;
+	for (const d of readdirSync(proj)) {
+		const f = join(proj, d, `${cliSessionId}.jsonl`);
+		if (existsSync(f)) {
+			try { return now - statSync(f).mtimeMs; } catch { return Infinity; }
+		}
+	}
+	return Infinity;
+}
+
 // Waiting window shared via <nasDir>/waiting-config.json, re-read each cycle so edits
 // apply without re-running anything. Defaults: inactive 60 min, grace 120 s.
 function readWindow() {
@@ -56,10 +74,10 @@ function readWindow() {
 }
 
 // accountUuid -> count of sessions waiting for your reply on this machine: unarchived,
-// not a scheduled routine, with a completed turn, and last active between grace and the
-// inactive window ago (settled but recent). We can't use a live process to mean
-// "running" — recent Claude Code keeps it alive while a chat is merely selected — so we
-// use activity timing. Counted across all accounts, not just the signed-in one.
+// not a scheduled routine, with a completed turn, and whose TRANSCRIPT has been quiet
+// between grace and the inactive window (settled = done, but recent). Transcript mtime
+// (not the session file, and not a live process — CC keeps that alive while selected)
+// is what distinguishes "actively working" from "done waiting". All accounts.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
@@ -78,7 +96,9 @@ function computeLocalWaiting() {
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived || s.scheduledTaskId != null) continue;
 				if ((s.completedTurns ?? 0) <= 0) continue;
-				const age = now - (s.lastActivityAt ?? 0);
+				// Prefer transcript mtime; fall back to session-file activity if absent.
+				let age = transcriptAgeMs(s.cliSessionId, now);
+				if (!Number.isFinite(age)) age = now - (s.lastActivityAt ?? 0);
 				if (age >= graceMs && age <= recentMs) waiting++;
 			}
 		}

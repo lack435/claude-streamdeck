@@ -70,21 +70,16 @@ type DesktopSession = {
 	scheduledTaskId?: string;
 };
 
-/** Defaults when no shared config is present. */
+/** Default "inactive after" window when no shared config is present. */
 const DEFAULT_RECENT_MS = 60 * 60 * 1000;
-const DEFAULT_GRACE_MS = 180 * 1000;
 
 /**
  * Returns a map of accountUuid → count of sessions waiting for your reply on this
- * machine: unarchived, not actively running, with at least one completed turn
- * (excludes headless/scheduled runs), and active within {@link recentMs}. Counted
- * across all accounts, not just the signed-in one.
- *
- * "Actively running" = a live process with activity in the last {@link graceMs};
- * a lingering process with stale activity is treated as idle/waiting, which works
- * around Claude Code's stuck-"Running" state.
+ * machine: unarchived, not running (no live process), not a scheduled routine, with
+ * at least one completed turn, and active within {@link recentMs}. Counted across all
+ * accounts, not just the signed-in one.
  */
-export function computeLocalWaiting(recentMs: number = DEFAULT_RECENT_MS, graceMs: number = DEFAULT_GRACE_MS): Record<string, number> {
+export function computeLocalWaiting(recentMs: number = DEFAULT_RECENT_MS): Record<string, number> {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts: Record<string, number> = {};
 	if (!existsSync(root)) {
@@ -115,10 +110,9 @@ export function computeLocalWaiting(recentMs: number = DEFAULT_RECENT_MS, graceM
 				if (s.scheduledTaskId != null) {
 					continue; // scheduled task / routine — not something awaiting your reply
 				}
-				const age = now - (s.lastActivityAt ?? 0);
-				const running = !!s.cliSessionId && live.has(s.cliSessionId) && age < graceMs;
+				const running = !!s.cliSessionId && live.has(s.cliSessionId);
 				const real = (s.completedTurns ?? 0) > 0;
-				const recent = age <= recentMs;
+				const recent = now - (s.lastActivityAt ?? 0) <= recentMs;
 				if (!running && real && recent) {
 					waiting++;
 				}

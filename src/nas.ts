@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 
 import { computeLocalWaiting } from "./localSessions";
-import { readInactiveMs } from "./waitingConfig";
+import { nasRoot, readInactiveMs } from "./waitingConfig";
 
 /** One machine's contribution, written to `<nas>/reports/<machine>.json`. */
 export type MachineReport = {
@@ -26,7 +26,7 @@ function machineName(): string {
 }
 
 function reportsDir(nasDir: string): string {
-	return join(nasDir, "reports");
+	return join(nasRoot(nasDir), "reports");
 }
 
 /** Compute this machine's waiting counts and write them to the NAS atomically. */

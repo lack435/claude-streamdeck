@@ -13,8 +13,11 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Normalize the NAS path to the shared root, tolerating a trailing "reports" segment.
+const nasRoot = (d) => (basename(d).toLowerCase() === "reports" ? dirname(d) : d);
 
 const args = process.argv.slice(2);
 const getArg = (name) => {
@@ -59,7 +62,7 @@ function liveSessionIds() {
 // "Inactive after N minutes" window, shared via <nasDir>/waiting-config.json, re-read
 // each cycle so edits apply without re-running anything. Default 60 min.
 function readRecentMs() {
-	const c = readJson(join(nasDir, "waiting-config.json")) || {};
+	const c = readJson(join(nasRoot(nasDir), "waiting-config.json")) || {};
 	const m = Number(c.inactiveMinutes);
 	return (Number.isFinite(m) && m > 0 ? m : 60) * 60000;
 }
@@ -99,7 +102,7 @@ function computeLocalWaiting() {
 
 function writeReport() {
 	const machine = (hostname() || "machine").replace(/[^a-zA-Z0-9_.-]/g, "_");
-	const dir = join(nasDir, "reports");
+	const dir = join(nasRoot(nasDir), "reports");
 	mkdirSync(dir, { recursive: true });
 	const report = { machine, updatedAt: Date.now(), accounts: computeLocalWaiting() };
 	const target = join(dir, `${machine}.json`);

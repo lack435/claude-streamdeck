@@ -1,7 +1,20 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+
 import streamDeck from "@elgato/streamdeck";
 
 import { TOKEN_REFRESH_SKEW_MS } from "./config";
 import { fetchProfile, refreshTokens, type TokenResponse } from "./oauth";
+
+/**
+ * Local mirror of the plugin's global settings. Stream Deck's own settings store
+ * has been seen to corrupt (e.g. a reboot interrupting a token-refresh write),
+ * which loses all accounts and forces a re-login. We back up here on every change
+ * and restore at startup if the store comes back empty. Kept strictly local (user
+ * profile), never the NAS, since it contains tokens.
+ */
+const BACKUP_PATH = join(homedir(), ".claude-streamdeck", "accounts-backup.json");
 
 /** A logged-in account persisted in the plugin's global settings. */
 export type StoredAccount = {
@@ -38,6 +51,42 @@ async function getGlobal(): Promise<GlobalSettings> {
 async function setGlobal(next: GlobalSettings): Promise<void> {
 	cache = next;
 	await streamDeck.settings.setGlobalSettings(next);
+	writeBackup(next);
+}
+
+function writeBackup(settings: GlobalSettings): void {
+	try {
+		mkdirSync(dirname(BACKUP_PATH), { recursive: true });
+		writeFileSync(BACKUP_PATH, JSON.stringify(settings));
+	} catch (err) {
+		streamDeck.logger.warn("Could not write accounts backup", err);
+	}
+}
+
+/**
+ * At startup: if Stream Deck's global settings have accounts, refresh the local
+ * backup; if they came back empty (e.g. a corrupted store), restore from the backup
+ * so the user isn't forced to re-login. Call once after warming the cache.
+ */
+export async function restoreFromBackupIfEmpty(): Promise<void> {
+	if ((await loadAccounts()).length > 0) {
+		if (cache) {
+			writeBackup(cache);
+		}
+		return;
+	}
+	try {
+		if (!existsSync(BACKUP_PATH)) {
+			return;
+		}
+		const backup = JSON.parse(readFileSync(BACKUP_PATH, "utf8")) as GlobalSettings;
+		if (backup.accounts?.length) {
+			streamDeck.logger.info(`Global settings had no accounts; restoring ${backup.accounts.length} from local backup`);
+			await setGlobal(backup);
+		}
+	} catch (err) {
+		streamDeck.logger.warn("Could not restore accounts backup", err);
+	}
 }
 
 export async function loadAccounts(force = false): Promise<StoredAccount[]> {

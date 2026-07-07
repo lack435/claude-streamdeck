@@ -1,6 +1,6 @@
 import streamDeck, { LogLevel } from "@elgato/streamdeck";
 
-import { loadAccounts } from "./accounts";
+import { loadAccounts, restoreFromBackupIfEmpty } from "./accounts";
 import { MetricAction } from "./actions/metric";
 import { agentPoller } from "./agents";
 import { poller } from "./usage";
@@ -15,7 +15,9 @@ agentPoller.onUpdate(() => void MetricAction.refreshAll());
 
 await streamDeck.connect();
 
-// Warm the account/config cache from global settings, then begin polling.
+// Warm the account/config cache, restoring from the local backup if Stream Deck's
+// settings came back empty (corruption recovery), then begin polling.
 await loadAccounts(true);
+await restoreFromBackupIfEmpty();
 poller.start();
 agentPoller.start();

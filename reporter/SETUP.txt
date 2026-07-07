@@ -8,9 +8,14 @@ Setup (once per machine):
     Double-click  install-startup.cmd
     -> starts reporting now, and again at every login (runs hidden).
 
+Update to a new version:  just double-click install-startup.cmd again
+    (it stops the old reporter first, then starts the new one - no stacking).
+
 Test it:              run.cmd --once      (writes one report, then exits)
 Stop autostart:       uninstall-startup.cmd
 
 No Node install needed - node.exe is bundled in this folder.
-Reports are written to ..\reports\<machine>.json; the Stream Deck plugin sums
-every machine seen in the last 2 minutes.
+Each machine reports only the account it is currently signed into (sessions
+from a previously signed-in account are not counted). Reports are written to
+..\reports\<machine>.json; the Stream Deck plugin sums every machine seen in
+the last 2 minutes.

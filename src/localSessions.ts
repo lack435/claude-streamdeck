@@ -68,6 +68,16 @@ type DesktopSession = {
 	lastFocusedAt?: number;
 };
 
+/**
+ * The account currently signed into the desktop app on this machine. Sessions
+ * under other accounts are stale leftovers from a previous login (you can't act
+ * on them without switching accounts), so we don't count them.
+ */
+function activeAccountId(): string | undefined {
+	const cfg = readJson<{ lastKnownAccountUuid?: string }>(join(claudeAppDataDir(), "config.json"));
+	return cfg?.lastKnownAccountUuid;
+}
+
 /** Returns a map of accountUuid → count of sessions waiting for input on this machine. */
 export function computeLocalWaiting(): Record<string, number> {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
@@ -76,8 +86,13 @@ export function computeLocalWaiting(): Record<string, number> {
 		return counts;
 	}
 	const live = liveSessionIds();
+	const active = activeAccountId();
 
 	for (const accountId of readdirSync(root)) {
+		// Only the currently-signed-in account is actionable; skip stale accounts.
+		if (active && accountId !== active) {
+			continue;
+		}
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) {
 			continue;

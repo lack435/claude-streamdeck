@@ -56,13 +56,21 @@ function liveSessionIds() {
 	return live;
 }
 
+// Account currently signed into the desktop app; sessions under other accounts
+// are stale leftovers from a previous login and are not counted.
+function activeAccountId() {
+	return readJson(join(claudeAppDataDir(), "config.json"))?.lastKnownAccountUuid;
+}
+
 // accountUuid -> count of unarchived, not-running sessions on this machine.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
 	const live = liveSessionIds();
+	const active = activeAccountId();
 	for (const accountId of readdirSync(root)) {
+		if (active && accountId !== active) continue; // only the signed-in account
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
 		let waiting = 0;

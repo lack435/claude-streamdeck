@@ -1,0 +1,16 @@
+Claude Stream Deck - agent reporter
+====================================
+
+Run this on each machine that runs Claude Code, EXCEPT the machine with the
+Stream Deck (that one reports itself automatically).
+
+Setup (once per machine):
+    Double-click  install-startup.cmd
+    -> starts reporting now, and again at every login (runs hidden).
+
+Test it:              run.cmd --once      (writes one report, then exits)
+Stop autostart:       uninstall-startup.cmd
+
+No Node install needed - node.exe is bundled in this folder.
+Reports are written to ..\reports\<machine>.json; the Stream Deck plugin sums
+every machine seen in the last 2 minutes.

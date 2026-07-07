@@ -13,21 +13,22 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 const getArg = (name) => {
 	const i = args.indexOf(name);
 	return i >= 0 ? args[i + 1] : undefined;
 };
-const nasDir = getArg("--out") || process.env.CLAUDE_SD_NAS;
+
+// When this script lives in <NAS>/reporter/report.mjs, default the output to the
+// NAS root (its parent) so it can be run with no arguments straight from the share.
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const defaultOut = dirname(scriptDir);
+const nasDir = getArg("--out") || process.env.CLAUDE_SD_NAS || defaultOut;
 const intervalSec = Number(getArg("--interval") || 30);
 const once = args.includes("--once");
-
-if (!nasDir) {
-	console.error("Missing --out <nasDir> (or CLAUDE_SD_NAS env). Example:\n  node report.mjs --out \"\\\\NAS\\share\\claude-streamdeck\"");
-	process.exit(1);
-}
 
 function claudeAppDataDir() {
 	if (process.platform === "win32") return join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Claude");

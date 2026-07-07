@@ -12,3 +12,6 @@ pkce.json
 
 # Manual-run logs at repo root
 /logs/
+
+# Portable node bundled only on the NAS, never in the repo
+reporter/node.exe

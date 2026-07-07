@@ -20,13 +20,14 @@ One action, **Claude Metric** — drop it on any key and configure `{account, me
 
 ### Reporting agents from other machines
 
-The Stream Deck machine reports itself, but every *other* machine running Claude Code needs the reporter so its waiting agents are counted:
+The Stream Deck machine reports itself. Every *other* machine running Claude Code needs the reporter so its waiting agents are counted. The easiest way is the turnkey folder on the shared drive (bundles its own `node.exe`, no install needed):
 
-```bash
-node reporter/report.mjs --out "Y:\Claude\Streamdeck"
-```
+1. Copy the contents of `reporter/` into `<nas>/reporter/` on the shared drive, plus a standalone `node.exe` (Windows x64) next to `report.mjs`.
+2. On each other machine, double-click **`install-startup.cmd`** from that folder — it starts the reporter now (hidden) and re-runs it at every login.
 
-Run it as a **login / startup item** (not a "run whether logged on or not" scheduled task) — mapped drives like `Y:` only exist in the interactive session. If you use a UNC path (`\\NAS\Claude\Streamdeck`) it works from either. The reporter writes `<nas>/reports/<hostname>.json` every 30s; the plugin sums all machines seen in the last 2 minutes.
+`report.mjs` defaults its output to the parent folder, so dropped in `<nas>/reporter/` it writes to `<nas>/reports/<hostname>.json` every 30s with no arguments. The plugin sums all machines seen in the last 2 minutes.
+
+For scripted/manual use: `node reporter/report.mjs --out "Y:\Claude\Streamdeck"`. Run as a **login/startup item**, not a session-0 scheduled task — mapped drives like `Y:` only exist in the interactive session (a UNC path `\\NAS\...` works from either).
 
 > Usage %: the plugin polls the usage API every ~3 min per account with exponential backoff on rate limits — keep an eye out if you run multiple plugin instances against the same account.
 

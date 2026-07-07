@@ -2,7 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 
 import { getCachedNasPath } from "./accounts";
 import { AGENT_POLL_INTERVAL_MS, AGENT_STALE_MS } from "./config";
-import { readAggregate, writeLocalReport, type Aggregate, type MachineWaiting } from "./nas";
+import { readAggregate, type Aggregate, type MachineWaiting } from "./nas";
 
 type Listener = () => void;
 
@@ -59,7 +59,8 @@ class AgentPoller {
 			return;
 		}
 		try {
-			writeLocalReport(nasPath);
+			// Aggregate only — every machine (incl. this one) reports via the standalone
+			// reporter; the sandboxed plugin can't read %APPDATA%\Claude to self-report.
 			this.aggregate = readAggregate(nasPath, AGENT_STALE_MS);
 			this.lastError = undefined;
 		} catch (err) {

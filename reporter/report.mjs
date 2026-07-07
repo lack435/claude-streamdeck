@@ -43,40 +43,29 @@ function readJson(path) {
 	try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-function pidAlive(pid) {
-	try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
-}
-
-function liveSessionIds() {
-	const dir = join(homedir(), ".claude", "sessions");
-	const live = new Set();
-	if (!existsSync(dir)) return live;
-	for (const f of readdirSync(dir)) {
-		if (!f.endsWith(".json")) continue;
-		const d = readJson(join(dir, f));
-		if (d?.pid && d.sessionId && pidAlive(d.pid)) live.add(d.sessionId);
-	}
-	return live;
-}
-
-// "Inactive after N minutes" window, shared via <nasDir>/waiting-config.json, re-read
-// each cycle so edits apply without re-running anything. Default 60 min.
-function readRecentMs() {
+// Waiting window shared via <nasDir>/waiting-config.json, re-read each cycle so edits
+// apply without re-running anything. Defaults: inactive 60 min, grace 120 s.
+function readWindow() {
 	const c = readJson(join(nasRoot(nasDir), "waiting-config.json")) || {};
 	const m = Number(c.inactiveMinutes);
-	return (Number.isFinite(m) && m > 0 ? m : 60) * 60000;
+	const g = Number(c.activeGraceSeconds);
+	return {
+		recentMs: (Number.isFinite(m) && m > 0 ? m : 60) * 60000,
+		graceMs: (Number.isFinite(g) && g >= 0 ? g : 120) * 1000,
+	};
 }
 
-// accountUuid -> count of sessions waiting for your reply on this machine:
-// unarchived, not running (no live process), not a scheduled routine, with a completed
-// turn, and active within the window. Counted across all accounts, not just signed-in.
+// accountUuid -> count of sessions waiting for your reply on this machine: unarchived,
+// not a scheduled routine, with a completed turn, and last active between grace and the
+// inactive window ago (settled but recent). We can't use a live process to mean
+// "running" — recent Claude Code keeps it alive while a chat is merely selected — so we
+// use activity timing. Counted across all accounts, not just the signed-in one.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
-	const live = liveSessionIds();
 	const now = Date.now();
-	const recentMs = readRecentMs();
+	const { recentMs, graceMs } = readWindow();
 	for (const accountId of readdirSync(root)) {
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
@@ -87,12 +76,10 @@ function computeLocalWaiting() {
 			for (const f of readdirSync(orgDir)) {
 				if (!f.startsWith("local_") || !f.endsWith(".json")) continue;
 				const s = readJson(join(orgDir, f));
-				if (!s || s.isArchived) continue;
-				if (s.scheduledTaskId != null) continue; // scheduled task / routine — never counted
-				const running = s.cliSessionId && live.has(s.cliSessionId);
-				const real = (s.completedTurns ?? 0) > 0;
-				const recent = now - (s.lastActivityAt ?? 0) <= recentMs;
-				if (!running && real && recent) waiting++;
+				if (!s || s.isArchived || s.scheduledTaskId != null) continue;
+				if ((s.completedTurns ?? 0) <= 0) continue;
+				const age = now - (s.lastActivityAt ?? 0);
+				if (age >= graceMs && age <= recentMs) waiting++;
 			}
 		}
 		counts[accountId] = waiting;

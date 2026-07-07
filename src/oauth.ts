@@ -79,6 +79,7 @@ async function postToken(body: Record<string, string>): Promise<TokenResponse> {
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "application/json" },
 		body: JSON.stringify(body),
+		signal: AbortSignal.timeout(15_000),
 	});
 	const text = await res.text();
 	if (!res.ok) {

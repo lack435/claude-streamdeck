@@ -36,6 +36,7 @@ export async function fetchUsage(uuid: string): Promise<UsageSnapshot> {
 	const token = await getValidAccessToken(uuid);
 	const res = await fetch(API.usageUrl, {
 		headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+		signal: AbortSignal.timeout(15_000),
 	});
 	if (!res.ok) {
 		const header = res.headers.get("retry-after");

@@ -74,13 +74,21 @@
 		<button id="removeBtn" type="button" class="secondary">Remove selected account</button>
 	</div>
 
+	<hr />
+	<div class="section-title">Cross-machine (agents waiting)</div>
+	<div class="row">
+		<label for="nas">NAS folder</label>
+		<input id="nas" type="text" placeholder="\\NAS\share\claude-streamdeck" />
+	</div>
+	<p class="hint">Shared folder every machine can read/write. Applies to all keys. Run the reporter on your other machines (see README).</p>
+
 	<div class="status" id="status"></div>
 
 	<script>
 		let ws, uuid, actionUUID, settings = {};
 
 		const $ = (id) => document.getElementById(id);
-		const metricEl = $("metric"), accountEl = $("account"), labelEl = $("label"), statusEl = $("status");
+		const metricEl = $("metric"), accountEl = $("account"), labelEl = $("label"), statusEl = $("status"), nasEl = $("nas");
 
 		function setStatus(text, cls) { statusEl.textContent = text || ""; statusEl.className = "status" + (cls ? " " + cls : ""); }
 
@@ -88,6 +96,7 @@
 		function sendToPlugin(payload) { send({ event: "sendToPlugin", context: uuid, action: actionUUID, payload }); }
 		function saveSettings() { send({ event: "setSettings", context: uuid, payload: settings }); }
 		function requestAccounts() { sendToPlugin({ event: "getAccounts" }); }
+		function requestConfig() { sendToPlugin({ event: "getConfig" }); }
 
 		// eslint-disable-next-line no-unused-vars
 		function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
@@ -100,6 +109,7 @@
 				send({ event: inRegisterEvent, uuid: inUUID });
 				reflect();
 				requestAccounts();
+				requestConfig();
 			};
 			ws.onmessage = (e) => {
 				const msg = JSON.parse(e.data);
@@ -112,6 +122,9 @@
 			switch (payload.event) {
 				case "getAccounts":
 					populateAccounts(payload.items || []);
+					break;
+				case "config":
+					if (document.activeElement !== nasEl) nasEl.value = payload.nasPath || "";
 					break;
 				case "loginStarted":
 					$("pasteArea").classList.remove("hidden");
@@ -154,6 +167,7 @@
 		metricEl.addEventListener("change", () => { settings.metric = metricEl.value || undefined; saveSettings(); });
 		accountEl.addEventListener("change", () => { settings.accountId = accountEl.value || undefined; saveSettings(); });
 		labelEl.addEventListener("input", () => { settings.label = labelEl.value || undefined; saveSettings(); });
+		nasEl.addEventListener("change", () => { sendToPlugin({ event: "setNas", nasPath: nasEl.value.trim() }); setStatus(nasEl.value.trim() ? "Saved NAS folder." : "Cleared NAS folder.", "ok"); });
 
 		$("addBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin" }); });
 		$("finishBtn").addEventListener("click", () => {

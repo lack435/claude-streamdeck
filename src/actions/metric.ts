@@ -10,9 +10,18 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 
-import { getCachedAccount, getCachedAccounts, loadAccounts, removeAccount, type StoredAccount } from "../accounts";
+import {
+	getCachedAccount,
+	getCachedAccounts,
+	getCachedNasPath,
+	loadAccounts,
+	removeAccount,
+	setNasPath,
+	type StoredAccount,
+} from "../accounts";
+import { agentPoller } from "../agents";
 import { beginLogin, completeLogin } from "../login";
-import { renderMessage, renderPercent } from "../render";
+import { renderCount, renderMessage, renderPercent } from "../render";
 import { poller } from "../usage";
 
 export type MetricKind = "session" | "weekly" | "agents";
@@ -27,6 +36,8 @@ export type MetricSettings = {
 /** Messages exchanged with the property inspector. */
 type PiMessage =
 	| { event: "getAccounts" }
+	| { event: "getConfig" }
+	| { event: "setNas"; nasPath: string }
 	| { event: "beginLogin" }
 	| { event: "completeLogin"; code: string }
 	| { event: "removeAccount"; uuid: string };
@@ -75,6 +86,15 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			case "getAccounts":
 				await MetricAction.sendAccounts();
 				break;
+			case "getConfig":
+				await MetricAction.toPi({ event: "config", nasPath: getCachedNasPath() ?? "" });
+				break;
+			case "setNas":
+				await setNasPath(msg.nasPath);
+				await MetricAction.toPi({ event: "config", nasPath: getCachedNasPath() ?? "" });
+				void agentPoller.pollNow();
+				await MetricAction.refreshAll();
+				break;
 			case "beginLogin": {
 				const url = beginLogin();
 				await MetricAction.toPi({ event: "loginStarted", url });
@@ -85,7 +105,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 					const acc = await completeLogin(msg.code);
 					await MetricAction.toPi({ event: "loginResult", ok: true, label: acc.label, uuid: acc.uuid });
 					await MetricAction.sendAccounts();
-					void poller.pollNow();
+					void poller.pollAccount(acc.uuid);
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
 					streamDeck.logger.warn(`Login failed: ${message}`);
@@ -130,19 +150,28 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			return;
 		}
 
-		// Agents-waiting arrives in milestone 2 (NAS aggregation).
-		if (metric === "agents") {
-			await act.setImage(renderMessage(LABELS.agents, "—", "soon"));
+		const label = LABELS[metric];
+		if (metric === "agents" && !agentPoller.isConfigured()) {
+			await act.setImage(renderMessage(label, "—", "set NAS"));
 			return;
 		}
 
-		const label = LABELS[metric];
 		if (!accountId) {
 			await act.setImage(renderMessage(label, "?", "no account"));
 			return;
 		}
 
 		const sub = settings.label || accountSub(getCachedAccount(accountId));
+
+		if (metric === "agents") {
+			const count = agentPoller.getCount(accountId);
+			if (count === undefined) {
+				await act.setImage(renderMessage(label, "…", sub));
+				return;
+			}
+			await act.setImage(renderCount(label, count, sub));
+			return;
+		}
 		const snap = poller.getSnapshot(accountId);
 		if (!snap) {
 			const hasError = poller.getError(accountId);

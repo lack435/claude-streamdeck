@@ -12,6 +12,24 @@ Usage is fetched live from Anthropic's OAuth usage API, so it reflects all your 
 
 One action, **Claude Metric** — drop it on any key and configure `{account, metric}` in the Property Inspector. Add as many keys as you like.
 
+## Setup
+
+1. Add a **Claude Metric** key, open its Property Inspector, click **Add / re-login account**, and complete the browser login. Repeat for each account (personal, work).
+2. Pick a **metric** and **account** per key.
+3. For **Agents waiting** across machines, set the **NAS folder** field to a shared path every machine can reach (e.g. a mapped drive `Y:\Claude\Streamdeck`). The plugin's own machine reports itself automatically.
+
+### Reporting agents from other machines
+
+The Stream Deck machine reports itself, but every *other* machine running Claude Code needs the reporter so its waiting agents are counted:
+
+```bash
+node reporter/report.mjs --out "Y:\Claude\Streamdeck"
+```
+
+Run it as a **login / startup item** (not a "run whether logged on or not" scheduled task) — mapped drives like `Y:` only exist in the interactive session. If you use a UNC path (`\\NAS\Claude\Streamdeck`) it works from either. The reporter writes `<nas>/reports/<hostname>.json` every 30s; the plugin sums all machines seen in the last 2 minutes.
+
+> Usage %: the plugin polls the usage API every ~3 min per account with exponential backoff on rate limits — keep an eye out if you run multiple plugin instances against the same account.
+
 ## Develop
 
 Requires Node and the [Elgato CLI](https://docs.elgato.com/streamdeck/cli/intro) (`npm i -g @elgato/cli`).

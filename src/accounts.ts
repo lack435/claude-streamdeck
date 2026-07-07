@@ -22,36 +22,54 @@ export type GlobalSettings = {
 	nasPath?: string;
 };
 
-// In-memory cache so rendering/polling doesn't round-trip to Stream Deck settings.
-let cache: StoredAccount[] | null = null;
+// In-memory cache of the full global settings so rendering/polling doesn't
+// round-trip to Stream Deck settings on every call.
+let cache: GlobalSettings | null = null;
 
 async function getGlobal(): Promise<GlobalSettings> {
-	return (await streamDeck.settings.getGlobalSettings<GlobalSettings>()) ?? {};
-}
-
-async function setGlobal(next: GlobalSettings): Promise<void> {
-	cache = next.accounts ?? [];
-	await streamDeck.settings.setGlobalSettings(next);
-}
-
-export async function loadAccounts(force = false): Promise<StoredAccount[]> {
-	if (cache === null || force) {
-		cache = (await getGlobal()).accounts ?? [];
+	if (cache === null) {
+		cache = (await streamDeck.settings.getGlobalSettings<GlobalSettings>()) ?? {};
 	}
 	return cache;
 }
 
-/** Synchronous access to the last-loaded accounts (empty until {@link loadAccounts} warms the cache). */
+async function setGlobal(next: GlobalSettings): Promise<void> {
+	cache = next;
+	await streamDeck.settings.setGlobalSettings(next);
+}
+
+export async function loadAccounts(force = false): Promise<StoredAccount[]> {
+	if (force) {
+		cache = null;
+	}
+	return (await getGlobal()).accounts ?? [];
+}
+
+/** Synchronous access to the last-loaded accounts (empty until the cache is warmed). */
 export function getCachedAccounts(): StoredAccount[] {
-	return cache ?? [];
+	return cache?.accounts ?? [];
 }
 
 export function getCachedAccount(uuid: string): StoredAccount | undefined {
-	return (cache ?? []).find((a) => a.uuid === uuid);
+	return (cache?.accounts ?? []).find((a) => a.uuid === uuid);
 }
 
 export async function getAccount(uuid: string): Promise<StoredAccount | undefined> {
 	return (await loadAccounts()).find((a) => a.uuid === uuid);
+}
+
+/** The configured shared NAS folder (from the cache; warm it via {@link loadAccounts} first). */
+export function getCachedNasPath(): string | undefined {
+	return cache?.nasPath;
+}
+
+export async function getNasPath(): Promise<string | undefined> {
+	return (await getGlobal()).nasPath;
+}
+
+export async function setNasPath(nasPath: string | undefined): Promise<void> {
+	const global = await getGlobal();
+	await setGlobal({ ...global, nasPath: nasPath || undefined });
 }
 
 /** Persist (insert or replace) an account by uuid. */

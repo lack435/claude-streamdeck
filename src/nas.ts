@@ -16,8 +16,15 @@ export type MachineReport = {
 export type Aggregate = {
 	/** accountUuid → summed waiting count across fresh machines. */
 	counts: Record<string, number>;
+	/** Per fresh machine: its total waiting count across all accounts. */
+	machines: MachineWaiting[];
 	machinesFresh: number;
 	machinesStale: number;
+};
+
+export type MachineWaiting = {
+	name: string;
+	waiting: number;
 };
 
 /** Filesystem-safe machine name for use as a filename. */
@@ -51,7 +58,7 @@ export function writeLocalReport(nasDir: string): MachineReport {
  */
 export function readAggregate(nasDir: string, staleMs: number): Aggregate {
 	const dir = reportsDir(nasDir);
-	const agg: Aggregate = { counts: {}, machinesFresh: 0, machinesStale: 0 };
+	const agg: Aggregate = { counts: {}, machines: [], machinesFresh: 0, machinesStale: 0 };
 	if (!existsSync(dir)) {
 		return agg;
 	}
@@ -74,9 +81,13 @@ export function readAggregate(nasDir: string, staleMs: number): Aggregate {
 			continue;
 		}
 		agg.machinesFresh++;
+		let machineTotal = 0;
 		for (const [uuid, count] of Object.entries(report.accounts)) {
 			agg.counts[uuid] = (agg.counts[uuid] ?? 0) + (count ?? 0);
+			machineTotal += count ?? 0;
 		}
+		agg.machines.push({ name: report.machine, waiting: machineTotal });
 	}
+	agg.machines.sort((a, b) => a.name.localeCompare(b.name));
 	return agg;
 }

@@ -2,7 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 
 import { getCachedNasPath } from "./accounts";
 import { AGENT_POLL_INTERVAL_MS, AGENT_STALE_MS } from "./config";
-import { readAggregate, writeLocalReport, type Aggregate } from "./nas";
+import { readAggregate, writeLocalReport, type Aggregate, type MachineWaiting } from "./nas";
 
 type Listener = () => void;
 
@@ -12,7 +12,7 @@ type Listener = () => void;
  * subscribe via {@link onUpdate}. No-op until a NAS path is configured.
  */
 class AgentPoller {
-	private aggregate: Aggregate = { counts: {}, machinesFresh: 0, machinesStale: 0 };
+	private aggregate: Aggregate = { counts: {}, machines: [], machinesFresh: 0, machinesStale: 0 };
 	private lastError?: string;
 	private listeners = new Set<Listener>();
 	private timer?: NodeJS.Timeout;
@@ -27,6 +27,11 @@ class AgentPoller {
 
 	getError(): string | undefined {
 		return this.lastError;
+	}
+
+	/** Fresh machines with their total waiting count (across accounts). */
+	getMachines(): MachineWaiting[] {
+		return getCachedNasPath() ? this.aggregate.machines : [];
 	}
 
 	isConfigured(): boolean {

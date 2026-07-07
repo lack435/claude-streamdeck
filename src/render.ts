@@ -84,6 +84,30 @@ export function renderMessage(label: string, value: string, sub?: string): strin
 	return frame(ring({ value, label, sub, color: "#30363d", dim: true }));
 }
 
+/**
+ * A tile that lights the first letter of each reporting machine, bright when that
+ * machine has ≥1 waiting agent and dim when it's clear.
+ */
+export function renderMachines(machines: { name: string; waiting: number }[]): string {
+	if (machines.length === 0) {
+		return renderMessage("MACHINES", "—", "offline");
+	}
+	const n = machines.length;
+	const size = n <= 3 ? 48 : n === 4 ? 40 : n <= 6 ? 30 : 24;
+	const spacing = Math.round(size * 0.32);
+	const tspans = machines
+		.map((m) => {
+			const ch = escapeXml((m.name[0] ?? "?").toUpperCase());
+			return `<tspan fill="${m.waiting > 0 ? "#58a6ff" : "#3a4048"}">${ch}</tspan>`;
+		})
+		.join("");
+	return frame(
+		`<text x="${CX}" y="16" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="600" letter-spacing="1" fill="#6e7681">MACHINES</text>` +
+			// nudge right by half the trailing letter-spacing so the row stays visually centered
+			`<text x="${CX + spacing / 2}" y="${CY + 6}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${size}" font-weight="700" letter-spacing="${spacing}">${tspans}</text>`,
+	);
+}
+
 /** One account's line in a combined tile. */
 export type MultiRow = {
 	/** Short account tag shown on the left. */

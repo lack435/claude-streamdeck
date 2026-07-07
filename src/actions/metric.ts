@@ -22,13 +22,13 @@ import {
 } from "../accounts";
 import { agentPoller } from "../agents";
 import { beginLogin, completeLogin } from "../login";
-import { colorForPct, renderCount, renderMessage, renderMulti, renderPercent, type MultiRow } from "../render";
+import { colorForPct, renderCount, renderMachines, renderMessage, renderMulti, renderPercent, type MultiRow } from "../render";
 import { poller } from "../usage";
 
 /** Sentinel accountId meaning "stack every logged-in account on one tile". */
 export const ALL_ACCOUNTS = "__all__";
 
-export type MetricKind = "session" | "weekly" | "agents";
+export type MetricKind = "session" | "weekly" | "agents" | "machines";
 
 export type MetricSettings = {
 	accountId?: string;
@@ -47,7 +47,7 @@ type PiMessage =
 	| { event: "completeLogin"; code: string }
 	| { event: "removeAccount"; uuid: string };
 
-const LABELS: Record<MetricKind, string> = { session: "SESSION", weekly: "WEEK", agents: "WAITING" };
+const LABELS: Record<MetricKind, string> = { session: "SESSION", weekly: "WEEK", agents: "WAITING", machines: "MACHINES" };
 
 /** Short per-account hint shown on the tile: alias if set, else email local-part. */
 function accountSub(acc: StoredAccount | undefined): string {
@@ -158,6 +158,16 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 
 		if (!metric) {
 			await act.setImage(renderMessage("CLAUDE", "•", "set up"));
+			return;
+		}
+
+		// Machines view: light each reporting machine that has a waiting agent (any account).
+		if (metric === "machines") {
+			if (!agentPoller.isConfigured()) {
+				await act.setImage(renderMessage("MACHINES", "—", "set NAS"));
+				return;
+			}
+			await act.setImage(renderMachines(agentPoller.getMachines()));
 			return;
 		}
 

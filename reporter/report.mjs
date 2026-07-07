@@ -109,9 +109,17 @@ function computeLocalWaiting() {
 
 function writeReport() {
 	const machine = (hostname() || "machine").replace(/[^a-zA-Z0-9_.-]/g, "_");
+	const accounts = computeLocalWaiting();
+	// An empty map means the sessions folder couldn't be read (blocked/not ready) —
+	// a real machine always has >=1 account dir, reported as 0. Skip so we never clobber
+	// a previously-good report with {} (as a bad early-boot instance once did).
+	if (Object.keys(accounts).length === 0) {
+		console.log(`[${new Date().toISOString()}] ${machine}: no readable sessions, skipping write`);
+		return;
+	}
 	const dir = join(nasRoot(nasDir), "reports");
 	mkdirSync(dir, { recursive: true });
-	const report = { machine, updatedAt: Date.now(), accounts: computeLocalWaiting() };
+	const report = { machine, updatedAt: Date.now(), accounts };
 	const target = join(dir, `${machine}.json`);
 	const tmp = `${target}.${process.pid}.tmp`;
 	writeFileSync(tmp, JSON.stringify(report));

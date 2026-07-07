@@ -8,6 +8,8 @@ export type StoredAccount = {
 	uuid: string;
 	email: string;
 	label: string;
+	/** Short user-set display tag shown on tiles, e.g. "P" / "W". */
+	alias?: string;
 	plan?: string;
 	orgName?: string;
 	accessToken: string;
@@ -83,6 +85,13 @@ async function upsertAccount(acc: StoredAccount): Promise<void> {
 export async function removeAccount(uuid: string): Promise<void> {
 	const global = await getGlobal();
 	await setGlobal({ ...global, accounts: (global.accounts ?? []).filter((a) => a.uuid !== uuid) });
+}
+
+/** Set (or clear) a short display alias for an account. */
+export async function setAlias(uuid: string, alias: string): Promise<void> {
+	const global = await getGlobal();
+	const accounts = (global.accounts ?? []).map((a) => (a.uuid === uuid ? { ...a, alias: alias.trim() || undefined } : a));
+	await setGlobal({ ...global, accounts });
 }
 
 /** Build a {@link StoredAccount} from a fresh token response, enriching with profile info. */

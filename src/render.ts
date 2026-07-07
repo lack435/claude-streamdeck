@@ -97,25 +97,27 @@ export type MultiRow = {
 
 /** A tile stacking several accounts' values for one metric. */
 export function renderMulti(label: string, rows: MultiRow[]): string {
-	const top = 32;
-	const bottom = 138;
+	const top = 24;
+	const bottom = 144;
 	const rowH = (bottom - top) / Math.max(1, rows.length);
 	const body = rows
 		.map((row, i) => {
 			const rt = top + rowH * i;
-			const baseline = rt + Math.min(24, rowH * 0.5);
-			const tag =
-				`<text x="12" y="${baseline}" font-family="sans-serif" font-size="15" fill="#c9d1d9">${escapeXml(row.tag)}</text>` +
-				`<text x="132" y="${baseline}" text-anchor="end" font-family="sans-serif" font-size="24" font-weight="700" fill="${row.color}">${escapeXml(row.value)}</text>`;
-			const bar =
-				row.pct === undefined
-					? ""
-					: `<rect x="12" y="${rt + rowH - 16}" width="120" height="6" rx="3" fill="#21262d"/>` +
-						`<rect x="12" y="${rt + rowH - 16}" width="${(Math.max(0, Math.min(100, row.pct)) / 100 * 120).toFixed(1)}" height="6" rx="3" fill="${row.color}"/>`;
-			return tag + bar;
+			const hasBar = row.pct !== undefined;
+			const cy = rt + rowH / 2 - (hasBar ? 6 : 0);
+			const valueSize = row.value.length >= 4 ? 30 : row.value.length === 3 ? 36 : 42;
+			const tag = escapeXml(row.tag.slice(0, 8));
+			const line =
+				`<text x="10" y="${cy}" dominant-baseline="central" font-family="sans-serif" font-size="17" fill="#aeb6c0">${tag}</text>` +
+				`<text x="136" y="${cy}" text-anchor="end" dominant-baseline="central" font-family="sans-serif" font-size="${valueSize}" font-weight="700" fill="${row.color}">${escapeXml(row.value)}</text>`;
+			const bar = !hasBar
+				? ""
+				: `<rect x="10" y="${rt + rowH - 13}" width="124" height="6" rx="3" fill="#21262d"/>` +
+					`<rect x="10" y="${rt + rowH - 13}" width="${((Math.max(0, Math.min(100, row.pct!)) / 100) * 124).toFixed(1)}" height="6" rx="3" fill="${row.color}"/>`;
+			return line + bar;
 		})
 		.join("");
 	return frame(
-		`<text x="${CX}" y="19" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="600" letter-spacing="1" fill="#8b949e">${escapeXml(label)}</text>${body}`,
+		`<text x="${CX}" y="13" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="600" letter-spacing="1" fill="#6e7681">${escapeXml(label)}</text>${body}`,
 	);
 }

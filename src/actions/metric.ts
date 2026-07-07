@@ -16,6 +16,7 @@ import {
 	getCachedNasPath,
 	loadAccounts,
 	removeAccount,
+	setAlias,
 	setNasPath,
 	type StoredAccount,
 } from "../accounts";
@@ -41,18 +42,19 @@ type PiMessage =
 	| { event: "getAccounts" }
 	| { event: "getConfig" }
 	| { event: "setNas"; nasPath: string }
+	| { event: "setAlias"; uuid: string; alias: string }
 	| { event: "beginLogin" }
 	| { event: "completeLogin"; code: string }
 	| { event: "removeAccount"; uuid: string };
 
 const LABELS: Record<MetricKind, string> = { session: "SESSION", weekly: "WEEK", agents: "WAITING" };
 
-/** Short per-account hint (email local-part) shown atop the tile. */
+/** Short per-account hint shown on the tile: alias if set, else email local-part. */
 function accountSub(acc: StoredAccount | undefined): string {
 	if (!acc) {
 		return "?";
 	}
-	return acc.email.split("@")[0] || acc.label;
+	return acc.alias?.trim() || acc.email.split("@")[0] || acc.label;
 }
 
 @action({ UUID: "com.lack435.claude-code.metric" })
@@ -98,6 +100,11 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 				void agentPoller.pollNow();
 				await MetricAction.refreshAll();
 				break;
+			case "setAlias":
+				await setAlias(msg.uuid, msg.alias);
+				await MetricAction.sendAccounts();
+				await MetricAction.refreshAll();
+				break;
 			case "beginLogin": {
 				const url = beginLogin();
 				await MetricAction.toPi({ event: "loginStarted", url });
@@ -133,6 +140,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 		const items = getCachedAccounts().map((a) => ({
 			label: a.plan ? `${a.label} (${a.plan})` : a.label,
 			value: a.uuid,
+			alias: a.alias ?? "",
 		}));
 		await MetricAction.toPi({ event: "getAccounts", items });
 	}

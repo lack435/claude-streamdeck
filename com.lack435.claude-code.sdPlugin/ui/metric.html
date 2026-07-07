@@ -55,6 +55,8 @@
 		<button id="addBtn" type="button">Add / re-login account</button>
 	</div>
 
+	<div id="aliases"></div>
+
 	<div id="pasteArea" class="hidden">
 		<p class="hint">A browser window opened. Approve, then paste the code shown (looks like <code>code#state</code>).</p>
 		<div class="row">
@@ -122,6 +124,7 @@
 			switch (payload.event) {
 				case "getAccounts":
 					populateAccounts(payload.items || []);
+					buildAliases(payload.items || []);
 					break;
 				case "config":
 					if (document.activeElement !== nasEl) nasEl.value = payload.nasPath || "";
@@ -161,6 +164,27 @@
 				accountEl.appendChild(opt);
 			}
 			accountEl.value = current;
+		}
+
+		function buildAliases(items) {
+			const box = $("aliases");
+			box.innerHTML = "";
+			if (!items.length) return;
+			const hint = document.createElement("div");
+			hint.className = "hint"; hint.style.margin = "8px 0 4px 100px"; hint.textContent = "Short tile labels:";
+			box.appendChild(hint);
+			for (const it of items) {
+				const row = document.createElement("div");
+				row.className = "row";
+				const lab = document.createElement("label");
+				lab.textContent = it.label; lab.title = it.label;
+				lab.style.overflow = "hidden"; lab.style.whiteSpace = "nowrap"; lab.style.textOverflow = "ellipsis";
+				const inp = document.createElement("input");
+				inp.type = "text"; inp.maxLength = 4; inp.value = it.alias || ""; inp.placeholder = "e.g. P";
+				inp.addEventListener("change", () => sendToPlugin({ event: "setAlias", uuid: it.value, alias: inp.value.trim() }));
+				row.appendChild(lab); row.appendChild(inp);
+				box.appendChild(row);
+			}
 		}
 
 		function reflect() {

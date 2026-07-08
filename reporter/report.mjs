@@ -48,10 +48,7 @@ function pidAlive(pid) {
 	try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
 }
 
-// CLI sessionIds that currently have a live process. A session with a live process is
-// actively working/attached (dim); when the agent finishes the process exits, so no
-// process = done/idle. This is stable, unlike transcript mtime which has gaps during
-// long thinking / tool calls and falsely read active agents as "done".
+// CLI sessionIds that currently have a live process.
 function liveSessionIds() {
 	const dir = join(homedir(), ".claude", "sessions");
 	const live = new Set();
@@ -64,24 +61,48 @@ function liveSessionIds() {
 	return live;
 }
 
-// "Inactive after N minutes" window, shared via <nasDir>/waiting-config.json, re-read
-// each cycle so edits apply without re-running anything. Default 60 min.
-function readRecentMs() {
+// Milliseconds since a session's transcript was last written (every message/tool step).
+// Fresh = actively generating; quiet = idle. Infinity if not found.
+function transcriptAgeMs(cliSessionId, now) {
+	if (!cliSessionId) return Infinity;
+	const proj = join(homedir(), ".claude", "projects");
+	if (!existsSync(proj)) return Infinity;
+	for (const d of readdirSync(proj)) {
+		const f = join(proj, d, `${cliSessionId}.jsonl`);
+		if (existsSync(f)) {
+			try { return now - statSync(f).mtimeMs; } catch { return Infinity; }
+		}
+	}
+	return Infinity;
+}
+
+// Window shared via <nasDir>/waiting-config.json, re-read each cycle (no re-run to tune).
+// inactiveMinutes: stop counting a done session once idle this long. quietGraceSeconds:
+// how long an OPEN (live-process) session's transcript must be quiet before it counts as
+// done vs mid-thinking/tool-call. Defaults: 60 min, 300 s.
+function readWindow() {
 	const c = readJson(join(nasRoot(nasDir), "waiting-config.json")) || {};
 	const m = Number(c.inactiveMinutes);
-	return (Number.isFinite(m) && m > 0 ? m : 60) * 60000;
+	const g = Number(c.quietGraceSeconds);
+	return {
+		recentMs: (Number.isFinite(m) && m > 0 ? m : 60) * 60000,
+		graceMs: (Number.isFinite(g) && g >= 0 ? g : 300) * 1000,
+	};
 }
 
 // accountUuid -> count of sessions waiting for your reply on this machine: unarchived,
-// not a scheduled routine, with a completed turn, NO live process (done, not actively
-// working), and last active within the window (recent, not abandoned). All accounts.
+// not a scheduled routine, with a completed turn, recent (last activity within the
+// window), and DONE. "Done" = process gone, OR still open but transcript quiet past the
+// grace. (A live process alone means "session open" — it stays alive while awaiting
+// input — so transcript quiet-time is what separates done-at-prompt from generating.)
+// All accounts.
 function computeLocalWaiting() {
 	const root = join(claudeAppDataDir(), "claude-code-sessions");
 	const counts = {};
 	if (!existsSync(root)) return counts;
 	const now = Date.now();
 	const live = liveSessionIds();
-	const recentMs = readRecentMs();
+	const { recentMs, graceMs } = readWindow();
 	for (const accountId of readdirSync(root)) {
 		const accDir = join(root, accountId);
 		if (!statSync(accDir).isDirectory()) continue;
@@ -94,8 +115,17 @@ function computeLocalWaiting() {
 				const s = readJson(join(orgDir, f));
 				if (!s || s.isArchived || s.scheduledTaskId != null) continue;
 				if ((s.completedTurns ?? 0) <= 0) continue;
-				if (s.cliSessionId && live.has(s.cliSessionId)) continue; // actively working
-				if (now - (s.lastActivityAt ?? 0) <= recentMs) waiting++;
+				if (now - (s.lastActivityAt ?? 0) > recentMs) continue; // abandoned
+				const isLive = !!s.cliSessionId && live.has(s.cliSessionId);
+				if (!isLive) {
+					waiting++; // process gone => definitely done
+					continue;
+				}
+				// Open session: done only if its transcript has been quiet past the grace
+				// (else it's mid-generation / long tool call).
+				let ta = transcriptAgeMs(s.cliSessionId, now);
+				if (!Number.isFinite(ta)) ta = now - (s.lastActivityAt ?? 0);
+				if (ta >= graceMs) waiting++;
 			}
 		}
 		counts[accountId] = waiting;

@@ -84,27 +84,44 @@ export function renderMessage(label: string, value: string, sub?: string): strin
 	return frame(ring({ value, label, sub, color: "#30363d", dim: true }));
 }
 
+/** Shortest uppercase prefix of each name that is unique among all names. */
+function uniquePrefixes(names: string[]): Map<string, string> {
+	const out = new Map<string, string>();
+	for (const name of names) {
+		let len = 1;
+		while (len < name.length) {
+			const pfx = name.slice(0, len).toUpperCase();
+			if (names.filter((o) => o.slice(0, len).toUpperCase() === pfx).length === 1) {
+				break;
+			}
+			len++;
+		}
+		out.set(name, name.slice(0, len).toUpperCase());
+	}
+	return out;
+}
+
 /**
- * A tile that lights the first letter of each reporting machine, bright when that
- * machine has ≥1 waiting agent and dim when it's clear.
+ * A tile that lights each reporting machine, bright when it has ≥1 waiting agent and
+ * dim when clear. Each machine is labeled by the shortest prefix of its name that's
+ * unique among the current machines (a single letter unless two names collide).
  */
 export function renderMachines(machines: { name: string; waiting: number }[]): string {
 	if (machines.length === 0) {
 		return renderMessage("MACHINES", "—", "offline");
 	}
-	const n = machines.length;
-	const size = n <= 3 ? 48 : n === 4 ? 40 : n <= 6 ? 30 : 24;
-	const spacing = Math.round(size * 0.32);
-	const tspans = machines
-		.map((m) => {
-			const ch = escapeXml((m.name[0] ?? "?").toUpperCase());
-			return `<tspan fill="${m.waiting > 0 ? "#58a6ff" : "#3a4048"}">${ch}</tspan>`;
-		})
-		.join("");
+	const labels = uniquePrefixes(machines.map((m) => m.name));
+	const parts = machines.map((m) => ({ label: labels.get(m.name) ?? "?", lit: m.waiting > 0 }));
+	// Size to fit the joined line (labels + single-space separators) within the tile.
+	const joinedLen = parts.reduce((sum, p) => sum + p.label.length, 0) + (parts.length - 1);
+	const size = Math.max(16, Math.min(46, Math.floor(150 / Math.max(1, joinedLen))));
+	const spacer = `<tspan fill="#3a4048"> </tspan>`;
+	const body = parts
+		.map((p) => `<tspan fill="${p.lit ? "#58a6ff" : "#3a4048"}">${escapeXml(p.label)}</tspan>`)
+		.join(spacer);
 	return frame(
 		`<text x="${CX}" y="16" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="600" letter-spacing="1" fill="#6e7681">MACHINES</text>` +
-			// nudge right by half the trailing letter-spacing so the row stays visually centered
-			`<text x="${CX + spacing / 2}" y="${CY + 6}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${size}" font-weight="700" letter-spacing="${spacing}">${tspans}</text>`,
+			`<text x="${CX}" y="${CY + 6}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${size}" font-weight="700">${body}</text>`,
 	);
 }
 

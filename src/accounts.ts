@@ -35,6 +35,8 @@ export type GlobalSettings = {
 	accounts?: StoredAccount[];
 	/** Milestone 2: shared NAS folder for cross-machine agent aggregation. */
 	nasPath?: string;
+	/** Optional short labels for the Machines tile, keyed by machine (host) name. */
+	machineAliases?: Record<string, string>;
 };
 
 // In-memory cache of the full global settings so rendering/polling doesn't
@@ -141,6 +143,23 @@ export async function setAlias(uuid: string, alias: string): Promise<void> {
 	const global = await getGlobal();
 	const accounts = (global.accounts ?? []).map((a) => (a.uuid === uuid ? { ...a, alias: alias.trim() || undefined } : a));
 	await setGlobal({ ...global, accounts });
+}
+
+/** Machine (host) name → alias for the Machines tile. */
+export function getCachedMachineAliases(): Record<string, string> {
+	return cache?.machineAliases ?? {};
+}
+
+/** Set (or clear) a short alias for a machine on the Machines tile. */
+export async function setMachineAlias(name: string, alias: string): Promise<void> {
+	const global = await getGlobal();
+	const machineAliases = { ...(global.machineAliases ?? {}) };
+	if (alias.trim()) {
+		machineAliases[name] = alias.trim();
+	} else {
+		delete machineAliases[name];
+	}
+	await setGlobal({ ...global, machineAliases });
 }
 
 /** Build a {@link StoredAccount} from a fresh token response, enriching with profile info. */

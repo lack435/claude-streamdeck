@@ -85,6 +85,8 @@
 	</div>
 	<p class="hint">Shared folder every machine can read/write. Applies to all keys. Run the reporter on your other machines (see README).</p>
 
+	<div id="machines"></div>
+
 	<div class="status" id="status"></div>
 
 	<script>
@@ -100,6 +102,7 @@
 		function saveSettings() { send({ event: "setSettings", context: uuid, payload: settings }); }
 		function requestAccounts() { sendToPlugin({ event: "getAccounts" }); }
 		function requestConfig() { sendToPlugin({ event: "getConfig" }); }
+		function requestMachines() { sendToPlugin({ event: "getMachines" }); }
 
 		// eslint-disable-next-line no-unused-vars
 		function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
@@ -113,6 +116,7 @@
 				reflect();
 				requestAccounts();
 				requestConfig();
+				requestMachines();
 			};
 			ws.onmessage = (e) => {
 				const msg = JSON.parse(e.data);
@@ -129,6 +133,9 @@
 					break;
 				case "config":
 					if (document.activeElement !== nasEl) nasEl.value = payload.nasPath || "";
+					break;
+				case "getMachines":
+					buildMachines(payload.items || []);
 					break;
 				case "loginStarted":
 					$("pasteArea").classList.remove("hidden");
@@ -183,6 +190,28 @@
 				const inp = document.createElement("input");
 				inp.type = "text"; inp.maxLength = 4; inp.value = it.alias || ""; inp.placeholder = "e.g. P";
 				inp.addEventListener("change", () => sendToPlugin({ event: "setAlias", uuid: it.value, alias: inp.value.trim() }));
+				row.appendChild(lab); row.appendChild(inp);
+				box.appendChild(row);
+			}
+		}
+
+		function buildMachines(items) {
+			const box = $("machines");
+			box.innerHTML = "";
+			if (!items.length) return;
+			const hr = document.createElement("hr");
+			const title = document.createElement("div");
+			title.className = "section-title"; title.textContent = "Machine labels (agents tile)";
+			box.appendChild(hr); box.appendChild(title);
+			for (const it of items) {
+				const row = document.createElement("div");
+				row.className = "row";
+				const lab = document.createElement("label");
+				lab.textContent = it.name; lab.title = it.name;
+				lab.style.overflow = "hidden"; lab.style.whiteSpace = "nowrap"; lab.style.textOverflow = "ellipsis";
+				const inp = document.createElement("input");
+				inp.type = "text"; inp.maxLength = 4; inp.value = it.alias || ""; inp.placeholder = "auto";
+				inp.addEventListener("change", () => sendToPlugin({ event: "setMachineAlias", name: it.name, alias: inp.value.trim() }));
 				row.appendChild(lab); row.appendChild(inp);
 				box.appendChild(row);
 			}

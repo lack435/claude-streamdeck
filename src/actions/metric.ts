@@ -13,10 +13,12 @@ import streamDeck from "@elgato/streamdeck";
 import {
 	getCachedAccount,
 	getCachedAccounts,
+	getCachedMachineAliases,
 	getCachedNasPath,
 	loadAccounts,
 	removeAccount,
 	setAlias,
+	setMachineAlias,
 	setNasPath,
 	type StoredAccount,
 } from "../accounts";
@@ -41,8 +43,10 @@ export type MetricSettings = {
 type PiMessage =
 	| { event: "getAccounts" }
 	| { event: "getConfig" }
+	| { event: "getMachines" }
 	| { event: "setNas"; nasPath: string }
 	| { event: "setAlias"; uuid: string; alias: string }
+	| { event: "setMachineAlias"; name: string; alias: string }
 	| { event: "beginLogin" }
 	| { event: "completeLogin"; code: string }
 	| { event: "removeAccount"; uuid: string };
@@ -105,6 +109,14 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 				await MetricAction.sendAccounts();
 				await MetricAction.refreshAll();
 				break;
+			case "getMachines":
+				await MetricAction.sendMachines();
+				break;
+			case "setMachineAlias":
+				await setMachineAlias(msg.name, msg.alias);
+				await MetricAction.sendMachines();
+				await MetricAction.refreshAll();
+				break;
 			case "beginLogin": {
 				const url = beginLogin();
 				await MetricAction.toPi({ event: "loginStarted", url });
@@ -133,6 +145,16 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 	/** Send a message to the currently-visible property inspector. */
 	private static async toPi(payload: JsonValue): Promise<void> {
 		await streamDeck.ui.current?.sendToPropertyInspector(payload);
+	}
+
+	/** Send the reporting machines + their aliases to the PI (populates the alias editor). */
+	private static async sendMachines(): Promise<void> {
+		const aliases = getCachedMachineAliases();
+		const items = agentPoller
+			.getMachines()
+			.map((m) => ({ name: m.name, alias: aliases[m.name] ?? "" }))
+			.sort((a, b) => a.name.localeCompare(b.name));
+		await MetricAction.toPi({ event: "getMachines", items });
 	}
 
 	/** Send the account list to the PI (populates the account dropdown). */
@@ -167,7 +189,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 				await act.setImage(renderMessage("MACHINES", "—", "set NAS"));
 				return;
 			}
-			await act.setImage(renderMachines(agentPoller.getMachines()));
+			await act.setImage(renderMachines(agentPoller.getMachines(), getCachedMachineAliases()));
 			return;
 		}
 

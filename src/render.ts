@@ -103,25 +103,35 @@ function uniquePrefixes(names: string[]): Map<string, string> {
 
 /**
  * A tile that lights each reporting machine, bright when it has ≥1 waiting agent and
- * dim when clear. Each machine is labeled by the shortest prefix of its name that's
- * unique among the current machines (a single letter unless two names collide).
+ * dim when clear, laid out over up to two rows. Each machine's label is its user-set
+ * alias if any, else the shortest prefix of its name that's unique among the machines
+ * without an alias (a single letter unless two names collide).
  */
-export function renderMachines(machines: { name: string; waiting: number }[]): string {
+export function renderMachines(machines: { name: string; waiting: number }[], aliases: Record<string, string> = {}): string {
 	if (machines.length === 0) {
 		return renderMessage("MACHINES", "—", "offline");
 	}
-	const labels = uniquePrefixes(machines.map((m) => m.name));
-	const parts = machines.map((m) => ({ label: labels.get(m.name) ?? "?", lit: m.waiting > 0 }));
-	// Size to fit the joined line (labels + single-space separators) within the tile.
-	const joinedLen = parts.reduce((sum, p) => sum + p.label.length, 0) + (parts.length - 1);
-	const size = Math.max(16, Math.min(46, Math.floor(150 / Math.max(1, joinedLen))));
+	const prefixes = uniquePrefixes(machines.map((m) => m.name).filter((n) => !aliases[n]));
+	const parts = machines.map((m) => ({
+		label: aliases[m.name] || prefixes.get(m.name) || (m.name[0] ?? "?").toUpperCase(),
+		lit: m.waiting > 0,
+	}));
+
+	// Up to two rows; split the list in half when there are more than two machines.
+	const rows = parts.length <= 2 ? [parts] : [parts.slice(0, Math.ceil(parts.length / 2)), parts.slice(Math.ceil(parts.length / 2))];
+	const widest = Math.max(...rows.map((r) => r.reduce((s, p) => s + p.label.length, 0) + (r.length - 1)));
+	const size = Math.max(16, Math.min(50, Math.floor(150 / Math.max(1, widest))));
+	const ys = rows.length === 1 ? [82] : [60, 106];
 	const spacer = `<tspan fill="#3a4048"> </tspan>`;
-	const body = parts
-		.map((p) => `<tspan fill="${p.lit ? "#58a6ff" : "#3a4048"}">${escapeXml(p.label)}</tspan>`)
-		.join(spacer);
+
+	const lines = rows
+		.map((r, i) => {
+			const body = r.map((p) => `<tspan fill="${p.lit ? "#58a6ff" : "#3a4048"}">${escapeXml(p.label)}</tspan>`).join(spacer);
+			return `<text x="${CX}" y="${ys[i]}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${size}" font-weight="700">${body}</text>`;
+		})
+		.join("");
 	return frame(
-		`<text x="${CX}" y="16" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="600" letter-spacing="1" fill="#6e7681">MACHINES</text>` +
-			`<text x="${CX}" y="${CY + 6}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${size}" font-weight="700">${body}</text>`,
+		`<text x="${CX}" y="16" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="600" letter-spacing="1" fill="#6e7681">MACHINES</text>${lines}`,
 	);
 }
 

@@ -43,6 +43,8 @@
 		</select>
 	</div>
 
+	<div id="pickAccounts" class="hidden"></div>
+
 	<div class="row">
 		<label for="label">Label</label>
 		<input id="label" type="text" placeholder="(optional, e.g. work)" maxlength="12" />
@@ -170,13 +172,19 @@
 			}
 		}
 
+		let accountItems = [];
+
 		function populateAccounts(items) {
+			accountItems = items;
 			const current = settings.accountId || "";
 			accountEl.innerHTML = '<option value="">— none —</option>';
 			if (items.length > 1) {
 				const all = document.createElement("option");
 				all.value = "__all__"; all.textContent = "★ All accounts";
 				accountEl.appendChild(all);
+				const pick = document.createElement("option");
+				pick.value = "__custom__"; pick.textContent = "★ Pick accounts…";
+				accountEl.appendChild(pick);
 			}
 			for (const it of items) {
 				const opt = document.createElement("option");
@@ -184,6 +192,38 @@
 				accountEl.appendChild(opt);
 			}
 			accountEl.value = current;
+			buildPickAccounts();
+		}
+
+		function buildPickAccounts() {
+			const box = $("pickAccounts");
+			const active = accountEl.value === "__custom__";
+			box.classList.toggle("hidden", !active);
+			box.innerHTML = "";
+			if (!active) return;
+			const chosen = settings.accountIds || [];
+			for (const it of accountItems) {
+				const row = document.createElement("div");
+				row.className = "row";
+				const lab = document.createElement("label");
+				lab.textContent = " ";
+				const wrap = document.createElement("label");
+				wrap.style.flex = "1"; wrap.style.textAlign = "left"; wrap.style.color = "#d8d8d8";
+				const cb = document.createElement("input");
+				cb.type = "checkbox";
+				cb.style.flex = "none"; cb.style.marginRight = "6px";
+				cb.checked = chosen.includes(it.value);
+				cb.addEventListener("change", () => {
+					const set = new Set(settings.accountIds || []);
+					if (cb.checked) set.add(it.value); else set.delete(it.value);
+					settings.accountIds = Array.from(set);
+					saveSettings();
+				});
+				wrap.appendChild(cb);
+				wrap.appendChild(document.createTextNode(it.label));
+				row.appendChild(lab); row.appendChild(wrap);
+				box.appendChild(row);
+			}
 		}
 
 		function buildAliases(items) {
@@ -233,10 +273,11 @@
 			metricEl.value = settings.metric || "";
 			accountEl.value = settings.accountId || "";
 			labelEl.value = settings.label || "";
+			buildPickAccounts();
 		}
 
 		metricEl.addEventListener("change", () => { settings.metric = metricEl.value || undefined; saveSettings(); });
-		accountEl.addEventListener("change", () => { settings.accountId = accountEl.value || undefined; saveSettings(); });
+		accountEl.addEventListener("change", () => { settings.accountId = accountEl.value || undefined; saveSettings(); buildPickAccounts(); });
 		labelEl.addEventListener("input", () => { settings.label = labelEl.value || undefined; saveSettings(); });
 		nasEl.addEventListener("change", () => { sendToPlugin({ event: "setNas", nasPath: nasEl.value.trim() }); setStatus(nasEl.value.trim() ? "Saved NAS folder." : "Cleared NAS folder.", "ok"); });
 

@@ -30,10 +30,15 @@ import { poller } from "../usage";
 /** Sentinel accountId meaning "stack every logged-in account on one tile". */
 export const ALL_ACCOUNTS = "__all__";
 
+/** Sentinel accountId meaning "stack the accounts checked in `accountIds`". */
+export const CUSTOM_ACCOUNTS = "__custom__";
+
 export type MetricKind = "session" | "weekly" | "agents" | "machines";
 
 export type MetricSettings = {
 	accountId?: string;
+	/** The chosen accounts when accountId is {@link CUSTOM_ACCOUNTS}. */
+	accountIds?: string[];
 	metric?: MetricKind;
 	/** Optional custom short label shown at the top of the tile. */
 	label?: string;
@@ -219,8 +224,8 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			return;
 		}
 
-		if (accountId === ALL_ACCOUNTS) {
-			await MetricAction.renderCombined(act, metric, label);
+		if (accountId === ALL_ACCOUNTS || accountId === CUSTOM_ACCOUNTS) {
+			await MetricAction.renderCombined(act, metric, label, settings);
 			return;
 		}
 
@@ -263,12 +268,17 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 		await act.setImage(renderPercent(label, pct, sub, severity));
 	}
 
-	/** Render one row per logged-in account for the given metric. */
-	private static async renderCombined(act: KeyAction<MetricSettings>, metric: MetricKind, label: string): Promise<void> {
+	/** Render one row per account (all of them, or the settings' custom pick) for the given metric. */
+	private static async renderCombined(act: KeyAction<MetricSettings>, metric: MetricKind, label: string, settings: MetricSettings): Promise<void> {
 		// Agents-waiting has no Codex support, so keep that view Claude-only.
-		const accounts = getCachedAccounts().filter((a) => metric !== "agents" || a.provider !== "codex");
+		let accounts = getCachedAccounts().filter((a) => metric !== "agents" || a.provider !== "codex");
+		const custom = settings.accountId === CUSTOM_ACCOUNTS;
+		if (custom) {
+			const chosen = new Set(settings.accountIds ?? []);
+			accounts = accounts.filter((a) => chosen.has(a.uuid));
+		}
 		if (accounts.length === 0) {
-			await act.setImage(renderMessage(label, "?", "no accts"));
+			await act.setImage(renderMessage(label, "?", custom ? "pick accts" : "no accts"));
 			return;
 		}
 		const rows: MultiRow[] = accounts.map((acc) => {

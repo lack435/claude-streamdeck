@@ -1,7 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 
-import { getValidAccessToken, loadAccounts } from "./accounts";
-import { API, USAGE_BACKOFF_MAX_MS, USAGE_BACKOFF_MIN_MS, USAGE_INTERVAL_MS, USAGE_TICK_MS } from "./config";
+import { getAccount, getValidAccessToken, loadAccounts } from "./accounts";
+import { API, CODEX_API, USAGE_BACKOFF_MAX_MS, USAGE_BACKOFF_MIN_MS, USAGE_INTERVAL_MS, USAGE_TICK_MS } from "./config";
 
 /** Error carrying HTTP status + optional Retry-After so the poller can back off. */
 class UsageHttpError extends Error {
@@ -15,7 +15,8 @@ class UsageHttpError extends Error {
 
 /** Normalized usage snapshot for one account. */
 export type UsageSnapshot = {
-	sessionPct: number;
+	/** Absent when the plan has no short (session) window, e.g. some Codex plans. */
+	sessionPct?: number;
 	weeklyPct: number;
 	sessionResetsAt?: string;
 	weeklyResetsAt?: string;
@@ -31,9 +32,13 @@ type UsageResponse = {
 	limits?: UsageLimit[];
 };
 
-/** Fetch and normalize usage for a single account. */
+/** Fetch and normalize usage for a single account, dispatching on its provider. */
 export async function fetchUsage(uuid: string): Promise<UsageSnapshot> {
+	const account = await getAccount(uuid);
 	const token = await getValidAccessToken(uuid);
+	if (account?.provider === "codex") {
+		return fetchCodexUsage(token, account.uuid);
+	}
 	const res = await fetch(API.usageUrl, {
 		headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
 		signal: AbortSignal.timeout(15_000),
@@ -54,6 +59,57 @@ export async function fetchUsage(uuid: string): Promise<UsageSnapshot> {
 		weeklyResetsAt: data.seven_day?.resets_at ?? weekly?.resets_at,
 		sessionSeverity: session?.severity,
 		weeklySeverity: weekly?.severity,
+		fetchedAt: Date.now(),
+	};
+}
+
+/** One rate-limit window from the Codex usage endpoint. */
+type CodexWindow = { used_percent?: number; limit_window_seconds?: number; reset_after_seconds?: number; reset_at?: number } | null;
+type CodexUsageResponse = {
+	plan_type?: string;
+	rate_limit?: { primary_window?: CodexWindow; secondary_window?: CodexWindow };
+};
+
+function codexResetsAt(win: CodexWindow): string | undefined {
+	if (typeof win?.reset_at === "number") {
+		return new Date(win.reset_at * 1000).toISOString();
+	}
+	if (typeof win?.reset_after_seconds === "number") {
+		return new Date(Date.now() + win.reset_after_seconds * 1000).toISOString();
+	}
+	return undefined;
+}
+
+/**
+ * Fetch usage for a Codex (ChatGPT-plan) account. The windows are picked by
+ * length rather than trusting primary/secondary ordering: the longest window is
+ * "weekly", and a distinct sub-day window (5h on Plus/Pro) is "session".
+ */
+async function fetchCodexUsage(token: string, chatgptAccountId: string): Promise<UsageSnapshot> {
+	const res = await fetch(CODEX_API.usageUrl, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			Accept: "application/json",
+			"ChatGPT-Account-Id": chatgptAccountId,
+		},
+		signal: AbortSignal.timeout(15_000),
+	});
+	if (!res.ok) {
+		const header = res.headers.get("retry-after");
+		const retryAfterMs = header ? Number(header) * 1000 : undefined;
+		throw new UsageHttpError(res.status, Number.isFinite(retryAfterMs) ? retryAfterMs : undefined);
+	}
+	const data = (await res.json()) as CodexUsageResponse;
+	const rl = data.rate_limit ?? {};
+	const windows = [rl.primary_window, rl.secondary_window].filter((w): w is NonNullable<CodexWindow> => typeof w?.used_percent === "number");
+	windows.sort((a, b) => (a.limit_window_seconds ?? 0) - (b.limit_window_seconds ?? 0));
+	const weekly = windows[windows.length - 1];
+	const session = windows.length > 1 && (windows[0].limit_window_seconds ?? Infinity) < 86_400 ? windows[0] : undefined;
+	return {
+		sessionPct: session ? Math.round(session.used_percent ?? 0) : undefined,
+		weeklyPct: Math.round(weekly?.used_percent ?? 0),
+		sessionResetsAt: codexResetsAt(session ?? null),
+		weeklyResetsAt: codexResetsAt(weekly ?? null),
 		fetchedAt: Date.now(),
 	};
 }
@@ -131,7 +187,7 @@ class UsagePoller {
 			state.error = undefined;
 			state.backoffMs = 0;
 			state.nextDueAt = Date.now() + USAGE_INTERVAL_MS;
-			streamDeck.logger.debug(`Usage OK for ${uuid}: session ${state.snapshot.sessionPct}% weekly ${state.snapshot.weeklyPct}%`);
+			streamDeck.logger.debug(`Usage OK for ${uuid}: session ${state.snapshot.sessionPct ?? "—"}% weekly ${state.snapshot.weeklyPct}%`);
 		} catch (err) {
 			const status = err instanceof UsageHttpError ? err.status : undefined;
 			state.error = err instanceof Error ? err.message : String(err);

@@ -8,13 +8,15 @@ An Elgato Stream Deck plugin that shows Claude Code state per account, across mu
 
 Usage is fetched live from Anthropic's OAuth usage API, so it reflects all your machines automatically. Each account logs in once via the plugin (OAuth PKCE); tokens are stored and refreshed by the plugin.
 
+**OpenAI Codex accounts** are supported for the usage metrics too: *Add Codex account* signs into your ChatGPT account (same OAuth client as the Codex CLI, callback on `localhost:1455` — the login finishes automatically, no code to paste) and usage comes from `chatgpt.com/backend-api/wham/usage`. The weekly tile maps to Codex's weekly window and the session tile to its 5-hour window when the plan has one (otherwise it shows "—"). Agents-waiting is Claude-only.
+
 ## Actions
 
 One action, **Claude Metric** — drop it on any key and configure `{account, metric}` in the Property Inspector. Add as many keys as you like.
 
 ## Setup
 
-1. Add a **Claude Metric** key, open its Property Inspector, click **Add / re-login account**, and complete the browser login. Repeat for each account (personal, work).
+1. Add a **Claude Metric** key, open its Property Inspector, click **Add Claude account** (or **Add Codex account**), and complete the browser login. Repeat for each account (personal, work).
 2. Pick a **metric** and **account** per key.
 3. For **Agents waiting** across machines, set the **NAS folder** field to a shared path every machine can reach (e.g. a mapped drive `Y:\Claude\Streamdeck`). The plugin's own machine reports itself automatically.
 
@@ -53,6 +55,7 @@ The Stream Deck app must be v7.1+ (bundles Node 20). See [docs/spike-findings.md
 
 - `src/` — TypeScript source (bundled by Rollup)
   - `oauth.ts` / `accounts.ts` — PKCE login + rotation-safe token store
+  - `codex.ts` — OpenAI Codex OAuth + token identity (usage fetch lives in `usage.ts`)
   - `usage.ts` — usage API client + poller
   - `render.ts` — SVG key images
   - `actions/metric.ts` — the Claude Metric action

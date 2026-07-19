@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 
 import streamDeck from "@elgato/streamdeck";
 
+import { codexIdentity, codexTokenExpiry, refreshCodexTokens, type CodexTokens } from "./codex";
 import { TOKEN_REFRESH_SKEW_MS } from "./config";
 import { fetchProfile, refreshTokens, type TokenResponse } from "./oauth";
 
@@ -16,9 +17,13 @@ import { fetchProfile, refreshTokens, type TokenResponse } from "./oauth";
  */
 const BACKUP_PATH = join(homedir(), ".claude-streamdeck", "accounts-backup.json");
 
+/** Which service an account belongs to. Absent means "claude" (pre-Codex accounts). */
+export type Provider = "claude" | "codex";
+
 /** A logged-in account persisted in the plugin's global settings. */
 export type StoredAccount = {
 	uuid: string;
+	provider?: Provider;
 	email: string;
 	label: string;
 	/** Short user-set display tag shown on tiles, e.g. "P" / "W". */
@@ -178,6 +183,7 @@ export async function accountFromToken(tokens: TokenResponse): Promise<StoredAcc
 	}
 	const acc: StoredAccount = {
 		uuid,
+		provider: "claude",
 		email,
 		label: email || uuid,
 		plan,
@@ -185,6 +191,23 @@ export async function accountFromToken(tokens: TokenResponse): Promise<StoredAcc
 		accessToken: tokens.access_token,
 		refreshToken: tokens.refresh_token,
 		expiresAt: Date.now() + tokens.expires_in * 1000,
+	};
+	await upsertAccount(acc);
+	return acc;
+}
+
+/** Build a {@link StoredAccount} for a Codex (ChatGPT) login from its token response. */
+export async function accountFromCodexTokens(tokens: CodexTokens): Promise<StoredAccount> {
+	const id = codexIdentity(tokens);
+	const acc: StoredAccount = {
+		uuid: id.accountId,
+		provider: "codex",
+		email: id.email,
+		label: id.email || id.accountId,
+		plan: id.plan,
+		accessToken: tokens.access_token,
+		refreshToken: tokens.refresh_token ?? "",
+		expiresAt: codexTokenExpiry(tokens),
 	};
 	await upsertAccount(acc);
 	return acc;
@@ -211,12 +234,13 @@ export async function getValidAccessToken(uuid: string): Promise<string> {
 	}
 	const promise = (async () => {
 		streamDeck.logger.info(`Refreshing access token for ${acc.email}`);
-		const tokens = await refreshTokens(acc.refreshToken);
+		const isCodex = acc.provider === "codex";
+		const tokens = isCodex ? await refreshCodexTokens(acc.refreshToken) : await refreshTokens(acc.refreshToken);
 		const updated: StoredAccount = {
 			...acc,
 			accessToken: tokens.access_token,
 			refreshToken: tokens.refresh_token ?? acc.refreshToken,
-			expiresAt: Date.now() + tokens.expires_in * 1000,
+			expiresAt: isCodex ? codexTokenExpiry(tokens as CodexTokens) : Date.now() + (tokens.expires_in ?? 3600) * 1000,
 		};
 		await upsertAccount(updated);
 		return updated.accessToken;

@@ -53,10 +53,13 @@
 
 	<div class="row">
 		<label>&nbsp;</label>
-		<button id="addBtn" type="button">Add / re-login account</button>
+		<button id="addBtn" type="button">Add Claude account</button>
+		<button id="addCodexBtn" type="button">Add Codex account</button>
 	</div>
 
 	<div id="aliases"></div>
+
+	<p class="hint hidden" id="codexHint"></p>
 
 	<div id="pasteArea" class="hidden">
 		<p class="hint">A browser window opened. Approve, then paste the code shown (looks like <code>code#state</code>).</p>
@@ -138,6 +141,14 @@
 					buildMachines(payload.items || []);
 					break;
 				case "loginStarted":
+					if (payload.provider === "codex") {
+						$("pasteArea").classList.add("hidden");
+						$("codexHint").classList.remove("hidden");
+						$("codexHint").innerHTML = (payload.url ? 'Didn’t open? <a href="' + payload.url + '" target="_blank" rel="noreferrer">Open login page</a>' : "");
+						setStatus("Browser opened — approve the ChatGPT login; it finishes automatically.", "");
+						break;
+					}
+					$("codexHint").classList.add("hidden");
 					$("pasteArea").classList.remove("hidden");
 					$("code").value = "";
 					$("code").focus();
@@ -149,6 +160,7 @@
 					$("finishBtn").disabled = false;
 					if (payload.ok) {
 						$("pasteArea").classList.add("hidden");
+						$("codexHint").classList.add("hidden");
 						setStatus("Added " + payload.label, "ok");
 						if (payload.uuid) { settings.accountId = payload.uuid; saveSettings(); }
 					} else {
@@ -228,7 +240,8 @@
 		labelEl.addEventListener("input", () => { settings.label = labelEl.value || undefined; saveSettings(); });
 		nasEl.addEventListener("change", () => { sendToPlugin({ event: "setNas", nasPath: nasEl.value.trim() }); setStatus(nasEl.value.trim() ? "Saved NAS folder." : "Cleared NAS folder.", "ok"); });
 
-		$("addBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin" }); });
+		$("addBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin", provider: "claude" }); });
+		$("addCodexBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin", provider: "codex" }); });
 		$("finishBtn").addEventListener("click", () => {
 			const code = $("code").value.trim();
 			if (!code) { setStatus("Paste the code first.", "err"); return; }

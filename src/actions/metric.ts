@@ -23,7 +23,7 @@ import {
 	type StoredAccount,
 } from "../accounts";
 import { agentPoller } from "../agents";
-import { beginLogin, completeLogin } from "../login";
+import { beginCodexLogin, beginLogin, completeLogin } from "../login";
 import { colorForPct, renderCount, renderMachines, renderMessage, renderMulti, renderPercent, type MultiRow } from "../render";
 import { poller } from "../usage";
 
@@ -47,7 +47,7 @@ type PiMessage =
 	| { event: "setNas"; nasPath: string }
 	| { event: "setAlias"; uuid: string; alias: string }
 	| { event: "setMachineAlias"; name: string; alias: string }
-	| { event: "beginLogin" }
+	| { event: "beginLogin"; provider?: "claude" | "codex" }
 	| { event: "completeLogin"; code: string }
 	| { event: "removeAccount"; uuid: string };
 
@@ -118,8 +118,25 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 				await MetricAction.refreshAll();
 				break;
 			case "beginLogin": {
+				if (msg.provider === "codex") {
+					const { url, result } = beginCodexLogin();
+					await MetricAction.toPi({ event: "loginStarted", url, provider: "codex" });
+					// Resolves on its own when the browser hits the localhost callback.
+					result
+						.then(async (acc) => {
+							await MetricAction.toPi({ event: "loginResult", ok: true, label: acc.label, uuid: acc.uuid });
+							await MetricAction.sendAccounts();
+							void poller.pollAccount(acc.uuid);
+						})
+						.catch(async (err: unknown) => {
+							const message = err instanceof Error ? err.message : String(err);
+							streamDeck.logger.warn(`Codex login failed: ${message}`);
+							await MetricAction.toPi({ event: "loginResult", ok: false, message });
+						});
+					break;
+				}
 				const url = beginLogin();
-				await MetricAction.toPi({ event: "loginStarted", url });
+				await MetricAction.toPi({ event: "loginStarted", url, provider: "claude" });
 				break;
 			}
 			case "completeLogin":
@@ -159,11 +176,14 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 
 	/** Send the account list to the PI (populates the account dropdown). */
 	private static async sendAccounts(): Promise<void> {
-		const items = getCachedAccounts().map((a) => ({
-			label: a.plan ? `${a.label} (${a.plan})` : a.label,
-			value: a.uuid,
-			alias: a.alias ?? "",
-		}));
+		const items = getCachedAccounts().map((a) => {
+			const prefix = a.provider === "codex" ? "Codex: " : "";
+			return {
+				label: prefix + (a.plan ? `${a.label} (${a.plan})` : a.label),
+				value: a.uuid,
+				alias: a.alias ?? "",
+			};
+		});
 		await MetricAction.toPi({ event: "getAccounts", items });
 	}
 
@@ -209,9 +229,15 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			return;
 		}
 
-		const sub = settings.label || accountSub(getCachedAccount(accountId));
+		const account = getCachedAccount(accountId);
+		const sub = settings.label || accountSub(account);
 
 		if (metric === "agents") {
+			// Waiting-agents tracking is Claude-only (no Codex reporter support).
+			if (account?.provider === "codex") {
+				await act.setImage(renderMessage(label, "—", sub));
+				return;
+			}
 			const count = agentPoller.getCount(accountId);
 			if (count === undefined) {
 				await act.setImage(renderMessage(label, "…", sub));
@@ -228,13 +254,19 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 		}
 
 		const pct = metric === "weekly" ? snap.weeklyPct : snap.sessionPct;
+		if (pct === undefined) {
+			// This plan has no session window (e.g. Codex weekly-only plans).
+			await act.setImage(renderMessage(label, "—", sub));
+			return;
+		}
 		const severity = metric === "weekly" ? snap.weeklySeverity : snap.sessionSeverity;
 		await act.setImage(renderPercent(label, pct, sub, severity));
 	}
 
 	/** Render one row per logged-in account for the given metric. */
 	private static async renderCombined(act: KeyAction<MetricSettings>, metric: MetricKind, label: string): Promise<void> {
-		const accounts = getCachedAccounts();
+		// Agents-waiting has no Codex support, so keep that view Claude-only.
+		const accounts = getCachedAccounts().filter((a) => metric !== "agents" || a.provider !== "codex");
 		if (accounts.length === 0) {
 			await act.setImage(renderMessage(label, "?", "no accts"));
 			return;
@@ -250,6 +282,9 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 				return { tag, value: poller.getError(acc.uuid) ? "!" : "…", color: "#484f58" };
 			}
 			const pct = metric === "weekly" ? snap.weeklyPct : snap.sessionPct;
+			if (pct === undefined) {
+				return { tag, value: "—", color: "#484f58" };
+			}
 			const severity = metric === "weekly" ? snap.weeklySeverity : snap.sessionSeverity;
 			return { tag, value: `${pct}%`, pct, color: colorForPct(pct, severity) };
 		});

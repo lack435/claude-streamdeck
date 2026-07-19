@@ -7,7 +7,7 @@
 			"Name": "Claude Metric",
 			"UUID": "com.lack435.claude-code.metric",
 			"Icon": "imgs/actions/metric/icon",
-			"Tooltip": "Shows Claude Code session usage, weekly usage, or agents waiting for input.",
+			"Tooltip": "Shows Claude Code or OpenAI Codex session/weekly usage, or Claude agents waiting for input.",
 			"PropertyInspectorPath": "ui/metric.html",
 			"Controllers": [
 				"Keypad"
@@ -23,7 +23,7 @@
 	"Category": "Claude Code",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
-	"Description": "Monitor Claude Code usage limits and waiting agents across accounts and machines.",
+	"Description": "Monitor Claude Code and OpenAI Codex usage limits, and waiting Claude agents across accounts and machines.",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 2,
 	"Software": {

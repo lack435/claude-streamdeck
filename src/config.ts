@@ -15,6 +15,28 @@ export const API = {
 	profileUrl: "https://api.anthropic.com/api/oauth/profile",
 } as const;
 
+/**
+ * OpenAI Codex CLI's public OAuth client (PKCE, no secret). The redirect URI is
+ * fixed at localhost:1455, so login runs a short-lived local HTTP server to
+ * catch the callback instead of the paste-a-code flow used for Claude.
+ */
+export const CODEX_OAUTH = {
+	clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
+	authorizeUrl: "https://auth.openai.com/oauth/authorize",
+	tokenUrl: "https://auth.openai.com/oauth/token",
+	redirectUri: "http://localhost:1455/auth/callback",
+	redirectPort: 1455,
+	scopes: "openid profile email offline_access",
+} as const;
+
+export const CODEX_API = {
+	/** Rate-limit windows for ChatGPT-plan Codex (primary = 5h, secondary = weekly). */
+	usageUrl: "https://chatgpt.com/backend-api/wham/usage",
+} as const;
+
+/** Give up on a pending Codex browser login after this long. */
+export const CODEX_LOGIN_TIMEOUT_MS = 5 * 60_000;
+
 /** Base cadence for refreshing usage per account (usage windows move slowly). */
 export const USAGE_INTERVAL_MS = 180_000;
 

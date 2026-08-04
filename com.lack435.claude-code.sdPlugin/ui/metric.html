@@ -59,6 +59,9 @@
 		<button id="addCodexBtn" type="button">Add Codex account</button>
 	</div>
 
+	<div id="reauthBox"></div>
+	<p class="hint hidden" id="reauthHint">Token expired? Re-authenticate — the account keeps its label and settings.</p>
+
 	<div id="aliases"></div>
 
 	<p class="hint hidden" id="codexHint"></p>
@@ -96,6 +99,11 @@
 
 	<script>
 		let ws, uuid, actionUUID, settings = {};
+		// Whether the in-flight Claude paste→finish login is a re-auth; attached to `completeLogin`
+		// so the plugin echoes it back in `loginResult`. (Codex carries the flag through `beginLogin`.)
+		// The add-vs-reauth decision is made from the echoed `payload.reauth`, never from this var,
+		// so interleaved Codex/Claude completions can't be misattributed.
+		let pendingReauth = false;
 
 		const $ = (id) => document.getElementById(id);
 		const metricEl = $("metric"), accountEl = $("account"), labelEl = $("label"), statusEl = $("status"), nasEl = $("nas");
@@ -163,8 +171,10 @@
 					if (payload.ok) {
 						$("pasteArea").classList.add("hidden");
 						$("codexHint").classList.add("hidden");
-						setStatus("Added " + payload.label, "ok");
-						if (payload.uuid) { settings.accountId = payload.uuid; saveSettings(); }
+						setStatus((payload.reauth ? "Re-authenticated " : "Added ") + payload.label, "ok");
+						// Only point the tile at the new account when *adding*; a re-auth must
+						// preserve the existing selection (e.g. "Pick accounts" / "All accounts").
+						if (payload.uuid && !payload.reauth) { settings.accountId = payload.uuid; saveSettings(); }
 					} else {
 						setStatus(payload.message || "Login failed", "err");
 					}
@@ -193,6 +203,46 @@
 			}
 			accountEl.value = current;
 			buildPickAccounts();
+			updateReauth();
+		}
+
+		// The account(s) this tile shows: the one selected account, the checked ones for
+		// "Pick accounts…", or every account for "All accounts".
+		function effectiveReauthAccounts() {
+			const v = accountEl.value;
+			if (v === "__all__") return accountItems;
+			if (v === "__custom__") {
+				const chosen = new Set(settings.accountIds || []);
+				return accountItems.filter((it) => chosen.has(it.value));
+			}
+			const one = accountItems.find((it) => it.value === v);
+			return one ? [one] : [];
+		}
+
+		// Render one "Re-authenticate <account>" button per account the tile shows, so an
+		// expired/logged-out account can be re-signed-in without losing its label/settings.
+		function updateReauth() {
+			const box = $("reauthBox");
+			box.innerHTML = "";
+			const accts = effectiveReauthAccounts();
+			$("reauthHint").classList.toggle("hidden", accts.length === 0);
+			for (const acc of accts) {
+				const row = document.createElement("div");
+				row.className = "row";
+				const lab = document.createElement("label");
+				lab.innerHTML = "&nbsp;";
+				const btn = document.createElement("button");
+				btn.type = "button";
+				btn.textContent = "Re-authenticate " + acc.label;
+				btn.addEventListener("click", () => {
+					pendingReauth = true;
+					setStatus("Opening browser… sign in with " + acc.label, "");
+					sendToPlugin({ event: "beginLogin", provider: acc.provider || "claude", reauth: true });
+				});
+				row.appendChild(lab);
+				row.appendChild(btn);
+				box.appendChild(row);
+			}
 		}
 
 		function buildPickAccounts() {
@@ -218,6 +268,7 @@
 					if (cb.checked) set.add(it.value); else set.delete(it.value);
 					settings.accountIds = Array.from(set);
 					saveSettings();
+					updateReauth();
 				});
 				wrap.appendChild(cb);
 				wrap.appendChild(document.createTextNode(it.label));
@@ -274,23 +325,24 @@
 			accountEl.value = settings.accountId || "";
 			labelEl.value = settings.label || "";
 			buildPickAccounts();
+			updateReauth();
 		}
 
 		metricEl.addEventListener("change", () => { settings.metric = metricEl.value || undefined; saveSettings(); });
-		accountEl.addEventListener("change", () => { settings.accountId = accountEl.value || undefined; saveSettings(); buildPickAccounts(); });
+		accountEl.addEventListener("change", () => { settings.accountId = accountEl.value || undefined; saveSettings(); buildPickAccounts(); updateReauth(); });
 		labelEl.addEventListener("input", () => { settings.label = labelEl.value || undefined; saveSettings(); });
 		nasEl.addEventListener("change", () => { sendToPlugin({ event: "setNas", nasPath: nasEl.value.trim() }); setStatus(nasEl.value.trim() ? "Saved NAS folder." : "Cleared NAS folder.", "ok"); });
 
-		$("addBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin", provider: "claude" }); });
-		$("addCodexBtn").addEventListener("click", () => { setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin", provider: "codex" }); });
+		$("addBtn").addEventListener("click", () => { pendingReauth = false; setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin", provider: "claude", reauth: false }); });
+		$("addCodexBtn").addEventListener("click", () => { pendingReauth = false; setStatus("Opening browser…", ""); sendToPlugin({ event: "beginLogin", provider: "codex", reauth: false }); });
 		$("finishBtn").addEventListener("click", () => {
 			const code = $("code").value.trim();
 			if (!code) { setStatus("Paste the code first.", "err"); return; }
 			$("finishBtn").disabled = true;
 			setStatus("Exchanging…", "");
-			sendToPlugin({ event: "completeLogin", code });
+			sendToPlugin({ event: "completeLogin", code, reauth: pendingReauth });
 		});
-		$("cancelBtn").addEventListener("click", () => { $("pasteArea").classList.add("hidden"); setStatus("", ""); });
+		$("cancelBtn").addEventListener("click", () => { pendingReauth = false; $("pasteArea").classList.add("hidden"); setStatus("", ""); });
 		$("removeBtn").addEventListener("click", () => {
 			const id = accountEl.value;
 			if (!id) { setStatus("Select an account to remove.", "err"); return; }

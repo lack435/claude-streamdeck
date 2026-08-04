@@ -52,8 +52,8 @@ type PiMessage =
 	| { event: "setNas"; nasPath: string }
 	| { event: "setAlias"; uuid: string; alias: string }
 	| { event: "setMachineAlias"; name: string; alias: string }
-	| { event: "beginLogin"; provider?: "claude" | "codex" }
-	| { event: "completeLogin"; code: string }
+	| { event: "beginLogin"; provider?: "claude" | "codex"; reauth?: boolean }
+	| { event: "completeLogin"; code: string; reauth?: boolean }
 	| { event: "removeAccount"; uuid: string };
 
 const LABELS: Record<MetricKind, string> = { session: "SESSION", weekly: "WEEK", agents: "WAITING", machines: "MACHINES" };
@@ -129,7 +129,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 					// Resolves on its own when the browser hits the localhost callback.
 					result
 						.then(async (acc) => {
-							await MetricAction.toPi({ event: "loginResult", ok: true, label: acc.label, uuid: acc.uuid });
+							await MetricAction.toPi({ event: "loginResult", ok: true, label: acc.label, uuid: acc.uuid, reauth: msg.reauth ?? false });
 							await MetricAction.sendAccounts();
 							void poller.pollAccount(acc.uuid);
 						})
@@ -147,7 +147,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			case "completeLogin":
 				try {
 					const acc = await completeLogin(msg.code);
-					await MetricAction.toPi({ event: "loginResult", ok: true, label: acc.label, uuid: acc.uuid });
+					await MetricAction.toPi({ event: "loginResult", ok: true, label: acc.label, uuid: acc.uuid, reauth: msg.reauth ?? false });
 					await MetricAction.sendAccounts();
 					void poller.pollAccount(acc.uuid);
 				} catch (err) {
@@ -187,6 +187,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 				label: prefix + (a.plan ? `${a.label} (${a.plan})` : a.label),
 				value: a.uuid,
 				alias: a.alias ?? "",
+				provider: a.provider ?? "claude",
 			};
 		});
 		await MetricAction.toPi({ event: "getAccounts", items });
@@ -254,7 +255,7 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 		const snap = poller.getSnapshot(accountId);
 		if (!snap) {
 			const hasError = poller.getError(accountId);
-			await act.setImage(renderMessage(label, hasError ? "!" : "…", hasError ? "auth?" : sub));
+			await act.setImage(renderMessage(label, hasError ? "auth" : "…", sub, hasError ? "#f85149" : undefined));
 			return;
 		}
 
@@ -289,7 +290,8 @@ export class MetricAction extends SingletonAction<MetricSettings> {
 			}
 			const snap = poller.getSnapshot(acc.uuid);
 			if (!snap) {
-				return { tag, value: poller.getError(acc.uuid) ? "!" : "…", color: "#484f58" };
+				const err = poller.getError(acc.uuid);
+				return { tag, value: err ? "auth" : "…", color: err ? "#f85149" : "#484f58" };
 			}
 			const pct = metric === "weekly" ? snap.weeklyPct : snap.sessionPct;
 			if (pct === undefined) {

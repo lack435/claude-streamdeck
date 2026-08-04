@@ -45,10 +45,12 @@ type RingOptions = {
 	color: string;
 	/** Dim the whole tile (e.g. zero / inactive). */
 	dim?: boolean;
+	/** Override the big value's text color (default white). */
+	valueColor?: string;
 };
 
 function ring(opts: RingOptions): string {
-	const { value, label, sub, pct, color, dim } = opts;
+	const { value, label, sub, pct, color, dim, valueColor } = opts;
 	const opacity = dim ? 0.5 : 1;
 	const dash = pct === undefined ? 0 : (Math.max(0, Math.min(100, pct)) / 100) * CIRC;
 	const arc =
@@ -63,7 +65,7 @@ function ring(opts: RingOptions): string {
 		(sub ? `<text x="${CX}" y="20" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#8b949e">${escapeXml(sub)}</text>` : "") +
 		`<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="#21262d" stroke-width="${STROKE}"/>` +
 		arc +
-		`<text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${valueSize}" font-weight="700" fill="#ffffff">${escapeXml(value)}</text>` +
+		`<text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="${valueSize}" font-weight="700" fill="${valueColor ?? "#ffffff"}">${escapeXml(value)}</text>` +
 		`<text x="${CX}" y="128" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="600" letter-spacing="1" fill="#c9d1d9">${escapeXml(label)}</text>` +
 		`</g>`
 	);
@@ -79,9 +81,9 @@ export function renderCount(label: string, count: number, sub?: string): string 
 	return frame(ring({ value: `${count}`, label, sub, color: count > 0 ? "#58a6ff" : "#30363d", dim: count === 0 }));
 }
 
-/** Placeholder / status tiles. */
-export function renderMessage(label: string, value: string, sub?: string): string {
-	return frame(ring({ value, label, sub, color: "#30363d", dim: true }));
+/** Placeholder / status tiles. A `valueColor` (e.g. red for auth errors) un-dims the tile so it reads as a warning. */
+export function renderMessage(label: string, value: string, sub?: string, valueColor?: string): string {
+	return frame(ring({ value, label, sub, color: "#30363d", dim: !valueColor, valueColor }));
 }
 
 /** Shortest uppercase prefix of each name that is unique among all names. */

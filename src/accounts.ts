@@ -170,6 +170,8 @@ export async function setMachineAlias(name: string, alias: string): Promise<void
 /** Build a {@link StoredAccount} from a fresh token response, enriching with profile info. */
 export async function accountFromToken(tokens: TokenResponse): Promise<StoredAccount> {
 	const uuid = tokens.account?.uuid ?? "";
+	// Preserve user-set fields (e.g. alias) so re-authenticating an existing account keeps its tile label.
+	const existing = await getAccount(uuid);
 	let email = tokens.account?.email_address ?? "";
 	let plan: string | undefined;
 	let orgName = tokens.organization?.name;
@@ -186,6 +188,7 @@ export async function accountFromToken(tokens: TokenResponse): Promise<StoredAcc
 		provider: "claude",
 		email,
 		label: email || uuid,
+		alias: existing?.alias,
 		plan,
 		orgName,
 		accessToken: tokens.access_token,
@@ -199,11 +202,14 @@ export async function accountFromToken(tokens: TokenResponse): Promise<StoredAcc
 /** Build a {@link StoredAccount} for a Codex (ChatGPT) login from its token response. */
 export async function accountFromCodexTokens(tokens: CodexTokens): Promise<StoredAccount> {
 	const id = codexIdentity(tokens);
+	// Preserve user-set fields (e.g. alias) so re-authenticating an existing account keeps its tile label.
+	const existing = await getAccount(id.accountId);
 	const acc: StoredAccount = {
 		uuid: id.accountId,
 		provider: "codex",
 		email: id.email,
 		label: id.email || id.accountId,
+		alias: existing?.alias,
 		plan: id.plan,
 		accessToken: tokens.access_token,
 		refreshToken: tokens.refresh_token ?? "",

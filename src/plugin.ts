@@ -3,9 +3,14 @@ import streamDeck, { LogLevel } from "@elgato/streamdeck";
 import { loadAccounts, restoreFromBackupIfEmpty } from "./accounts";
 import { MetricAction } from "./actions/metric";
 import { agentPoller } from "./agents";
+import { installGlobalErrorGuards } from "./safety";
 import { poller } from "./usage";
 
 streamDeck.logger.setLevel(LogLevel.INFO);
+
+// Install before anything opens a socket: a stray keep-alive/WebSocket reset
+// must never crash the plugin (previously an uncaught `read ECONNRESET`).
+installGlobalErrorGuards();
 
 streamDeck.actions.registerAction(new MetricAction());
 
